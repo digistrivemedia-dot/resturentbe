@@ -133,7 +133,7 @@ const orderSchema = new mongoose.Schema(
 );
 
 // Auto-generate order number: ORD-YYYYMMDD-XXX
-orderSchema.pre("save", async function (next) {
+orderSchema.pre("save", async function () {
   if (this.isNew && !this.orderNumber) {
     const today = new Date();
     const dateStr =
@@ -167,7 +167,6 @@ orderSchema.pre("save", async function (next) {
     }
   }
 
-  next();
 });
 
 // Indexes

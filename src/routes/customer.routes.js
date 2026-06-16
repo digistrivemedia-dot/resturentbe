@@ -18,10 +18,10 @@ const {
 router.use(auth);
 
 // Profile
-router.put("/profile", updateProfileValidator, validate, updateProfile);
+router.put("/profile", ...updateProfileValidator, validate, updateProfile);
 
 // Addresses
-router.post("/address", addAddressValidator, validate, addAddress);
+router.post("/address", ...addAddressValidator, validate, addAddress);
 router.put("/address/:id", updateAddress);
 router.delete("/address/:id", deleteAddress);
 

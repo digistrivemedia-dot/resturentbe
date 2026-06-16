@@ -70,11 +70,11 @@ router.get("/orders", getOrders);
 router.get("/orders/:id", getOrderById);
 router.put("/orders/:id/accept", acceptOrder);
 router.put("/orders/:id/reject", rejectOrder);
-router.put("/orders/:id/status", updateOrderStatusValidator, validate, updateOrderStatus);
+router.put("/orders/:id/status", ...updateOrderStatusValidator, validate, updateOrderStatus);
 
 // Menu
 router.get("/menu", getMenu);
-router.post("/menu", addMenuItemValidator, validate, addMenuItem);
+router.post("/menu", ...addMenuItemValidator, validate, addMenuItem);
 router.put("/menu/bulk-toggle", bulkToggle);
 router.put("/menu/:id", updateMenuItem);
 router.put("/menu/:id/toggle", toggleAvailability);
@@ -95,13 +95,13 @@ router.delete("/addons/:id", deleteAddonGroup);
 
 // Coupons
 router.get("/coupons", getCoupons);
-router.post("/coupons", createCouponValidator, validate, createCoupon);
+router.post("/coupons", ...createCouponValidator, validate, createCoupon);
 router.put("/coupons/:id", updateCoupon);
 router.delete("/coupons/:id", deleteCoupon);
 
 // Reviews
 router.get("/reviews", getReviews);
-router.post("/reviews/:id/reply", replyToReviewValidator, validate, replyToReview);
+router.post("/reviews/:id/reply", ...replyToReviewValidator, validate, replyToReview);
 
 // Profile
 router.get("/profile", getProfile);

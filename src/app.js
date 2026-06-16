@@ -16,12 +16,16 @@ const limiter = rateLimit({
   message: { success: false, message: "Too many requests, try again later" },
 });
 
-// Middlewares
-app.use(helmet());
-app.use(cors({
+// Middlewares — CORS must come before helmet
+const corsOptions = {
   origin: process.env.CLIENT_URL || "http://localhost:3000",
   credentials: true,
-}));
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
+app.use(helmet());
 app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));

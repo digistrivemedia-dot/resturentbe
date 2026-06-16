@@ -62,7 +62,7 @@ router.get("/dashboard", getDashboardStats);
 
 // Restaurants
 router.get("/restaurants", getRestaurants);
-router.post("/restaurants", onboardRestaurantValidator, validate, adminLog("onboarded", "restaurant"), onboardRestaurant);
+router.post("/restaurants", ...onboardRestaurantValidator, validate, adminLog("onboarded", "restaurant"), onboardRestaurant);
 router.get("/restaurants/:id", getRestaurantById);
 router.put("/restaurants/:id", adminLog("updated", "restaurant"), updateRestaurant);
 router.put("/restaurants/:id/verify", adminLog("verified", "restaurant"), verifyRestaurant);
@@ -77,26 +77,26 @@ router.put("/customers/:id/block", adminLog("toggled_block", "customer"), blockC
 // Orders
 router.get("/orders", getOrders);
 router.get("/orders/:id", getOrderById);
-router.put("/orders/:id/refund", processRefundValidator, validate, adminLog("refunded", "order"), processRefund);
+router.put("/orders/:id/refund", ...processRefundValidator, validate, adminLog("refunded", "order"), processRefund);
 
 // Coupons
 router.get("/coupons", getCoupons);
-router.post("/coupons", createCouponValidator, validate, adminLog("created", "coupon"), createCoupon);
+router.post("/coupons", ...createCouponValidator, validate, adminLog("created", "coupon"), createCoupon);
 router.put("/coupons/:id", adminLog("updated", "coupon"), updateCoupon);
 router.delete("/coupons/:id", adminLog("deleted", "coupon"), deleteCoupon);
 
 // Banners (CMS)
 router.get("/banners", getBanners);
-router.post("/banners", createBannerValidator, validate, adminLog("created", "banner"), createBanner);
+router.post("/banners", ...createBannerValidator, validate, adminLog("created", "banner"), createBanner);
 router.put("/banners/:id", adminLog("updated", "banner"), updateBanner);
 router.delete("/banners/:id", adminLog("deleted", "banner"), deleteBanner);
 
 // Notifications
-router.post("/notifications/send", sendNotificationValidator, validate, adminLog("sent", "notification"), sendNotification);
+router.post("/notifications/send", ...sendNotificationValidator, validate, adminLog("sent", "notification"), sendNotification);
 
 // Platform Settings
 router.get("/settings", getSettings);
-router.put("/settings", updateSettingsValidator, validate, adminLog("updated", "settings"), updateSettings);
+router.put("/settings", ...updateSettingsValidator, validate, adminLog("updated", "settings"), updateSettings);
 
 // Activity Logs
 router.get("/logs", getLogs);

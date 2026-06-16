@@ -18,10 +18,10 @@ const {
 // All order routes require auth
 router.use(auth);
 
-router.post("/", placeOrderValidator, validate, placeOrder);
+router.post("/", ...placeOrderValidator, validate, placeOrder);
 router.get("/", getMyOrders);
 router.get("/:id", getOrderById);
-router.post("/:id/cancel", cancelOrderValidator, validate, cancelOrder);
-router.post("/:id/rate", rateOrderValidator, validate, rateOrder);
+router.post("/:id/cancel", ...cancelOrderValidator, validate, cancelOrder);
+router.post("/:id/rate", ...rateOrderValidator, validate, rateOrder);
 
 module.exports = router;

@@ -95,8 +95,8 @@ const restaurantSchema = new mongoose.Schema(
 );
 
 // Auto-generate slug before saving
-restaurantSchema.pre("save", async function (next) {
-  if (!this.isModified("name")) return next();
+restaurantSchema.pre("save", async function () {
+  if (!this.isModified("name")) return;
 
   let baseSlug = slugify(this.name, { lower: true, strict: true });
   let slug = baseSlug;
@@ -109,7 +109,6 @@ restaurantSchema.pre("save", async function (next) {
   }
 
   this.slug = slug;
-  next();
 });
 
 // Indexes

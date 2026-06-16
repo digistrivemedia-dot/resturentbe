@@ -12,6 +12,6 @@ const {
 router.use(auth);
 
 router.get("/", getAvailableCoupons);
-router.post("/validate", validateCouponValidator, validate, validateCoupon);
+router.post("/validate", ...validateCouponValidator, validate, validateCoupon);
 
 module.exports = router;

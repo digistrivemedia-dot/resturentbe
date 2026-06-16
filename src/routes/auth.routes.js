@@ -13,11 +13,11 @@ const {
 } = require("../validators/auth.validator");
 
 // Public routes
-router.post("/register", registerValidator, validate, authController.register);
-router.post("/login", loginValidator, validate, authController.login);
-router.post("/send-otp", sendOtpValidator, validate, authController.sendOtp);
-router.post("/verify-otp", verifyOtpValidator, validate, authController.verifyOtp);
-router.post("/google", googleLoginValidator, validate, authController.googleLogin);
+router.post("/register", ...registerValidator, validate, authController.register);
+router.post("/login", ...loginValidator, validate, authController.login);
+router.post("/send-otp", ...sendOtpValidator, validate, authController.sendOtp);
+router.post("/verify-otp", ...verifyOtpValidator, validate, authController.verifyOtp);
+router.post("/google", ...googleLoginValidator, validate, authController.googleLogin);
 router.post("/refresh-token", authController.refreshToken);
 router.post("/logout", authController.logout);
 
