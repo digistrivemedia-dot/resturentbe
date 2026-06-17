@@ -62,8 +62,8 @@ const menuItemSchema = new mongoose.Schema(
     },
     spiceLevel: {
       type: String,
-      enum: ["mild", "medium", "hot", "extra_hot"],
-      default: "mild",
+      enum: ["none", "mild", "medium", "hot", "extra_hot"],
+      default: "none",
     },
     preparationTime: {
       type: Number,
