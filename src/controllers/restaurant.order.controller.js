@@ -11,13 +11,13 @@ function emitOrderUpdate(restaurantId, order) {
   } catch (e) {}
 }
 
-// Valid status transitions for restaurant
+// Valid status transitions for restaurant — each key maps to allowed next statuses
 const VALID_TRANSITIONS = {
-  [ORDER_STATUS.CONFIRMED]: ORDER_STATUS.PREPARING,
-  [ORDER_STATUS.PREPARING]: ORDER_STATUS.READY,
-  [ORDER_STATUS.READY]: ORDER_STATUS.PICKED_UP,
-  [ORDER_STATUS.PICKED_UP]: ORDER_STATUS.DELIVERED,
-  [ORDER_STATUS.OUT_FOR_DELIVERY]: ORDER_STATUS.DELIVERED,
+  [ORDER_STATUS.CONFIRMED]:        [ORDER_STATUS.PREPARING, ORDER_STATUS.READY],
+  [ORDER_STATUS.PREPARING]:        [ORDER_STATUS.READY],
+  [ORDER_STATUS.READY]:            [ORDER_STATUS.PICKED_UP],
+  [ORDER_STATUS.PICKED_UP]:        [ORDER_STATUS.DELIVERED],
+  [ORDER_STATUS.OUT_FOR_DELIVERY]: [ORDER_STATUS.DELIVERED],
 };
 
 const getOrders = async (req, res, next) => {
@@ -191,8 +191,8 @@ const updateOrderStatus = async (req, res, next) => {
     }
 
     // Validate transition
-    const expectedNext = VALID_TRANSITIONS[order.status];
-    if (!expectedNext || expectedNext !== status) {
+    const allowedNext = VALID_TRANSITIONS[order.status];
+    if (!allowedNext || !allowedNext.includes(status)) {
       throw new ApiError(
         400,
         `Cannot transition from "${order.status}" to "${status}"`

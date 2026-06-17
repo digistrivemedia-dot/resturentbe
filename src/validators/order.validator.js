@@ -65,8 +65,8 @@ const addAddressValidator = [
   body("label")
     .notEmpty()
     .withMessage("Label is required (e.g. Home, Work)")
-    .isIn(["Home", "Work", "Other"])
-    .withMessage("Label must be Home, Work, or Other"),
+    .isIn(["home", "work", "other"])
+    .withMessage("Label must be home, work, or other"),
   body("fullAddress")
     .notEmpty()
     .withMessage("Full address is required")
