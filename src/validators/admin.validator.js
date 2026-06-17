@@ -1,8 +1,8 @@
 const { body } = require("express-validator");
 
 const onboardRestaurantValidator = [
-  body("ownerName").notEmpty().withMessage("Owner name is required"),
-  body("ownerEmail").isEmail().withMessage("Valid owner email is required"),
+  body("owner.name").notEmpty().withMessage("Owner name is required"),
+  body("owner.email").isEmail().withMessage("Valid owner email is required"),
   body("name").notEmpty().withMessage("Restaurant name is required"),
 ];
 

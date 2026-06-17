@@ -88,19 +88,30 @@ const getRestaurantById = async (req, res, next) => {
 const onboardRestaurant = async (req, res, next) => {
   try {
     const {
-      ownerName, ownerEmail, ownerPhone,
-      name, description, cuisines, address, contact, timing,
-      deliverySettings, taxSettings, commission,
+      owner: ownerData = {},
+      name, description, cuisines, categories,
+      address, contact, timing, commission,
+      // flat delivery fields from frontend
+      deliveryFee, deliveryRadius, avgDeliveryTime, minOrder, freeDeliveryAbove,
+      // nested delivery settings (if frontend sends them this way)
+      deliverySettings: rawDeliverySettings,
+      // bank and documents
+      bank = {}, documents = {},
+      taxSettings: rawTaxSettings,
     } = req.body;
 
-    // Create the owner user account
+    const ownerName  = ownerData.name;
+    const ownerEmail = ownerData.email;
+    const ownerPhone = ownerData.phone;
+
+    // Create or update the owner user account
     let owner = await User.findOne({ email: ownerEmail });
     if (owner && owner.role === "restaurant_owner") {
       throw new ApiError(400, "This email is already registered as a restaurant owner");
     }
 
     if (!owner) {
-      // Generate a temporary password the owner can use to log in
+      // Temp password: last 4 digits of phone + "@Digi", or random
       const tempPassword = ownerPhone
         ? ownerPhone.slice(-4) + "@Digi"
         : Math.random().toString(36).slice(-8);
@@ -114,27 +125,50 @@ const onboardRestaurant = async (req, res, next) => {
         isEmailVerified: true,
       });
     } else {
-      // Existing user — upgrade role
       owner.role = "restaurant_owner";
-      owner.name = ownerName || owner.name;
+      owner.name  = ownerName  || owner.name;
       owner.phone = ownerPhone || owner.phone;
       await owner.save();
     }
 
-    // Create the restaurant
+    // Build deliverySettings — accept both flat fields and nested object
+    const deliverySettings = rawDeliverySettings || {
+      deliveryFee:      deliveryFee      ?? 30,
+      deliveryRadius:   deliveryRadius   ?? 5,
+      avgDeliveryTime:  avgDeliveryTime  ?? 30,
+      minOrderAmount:   minOrder         ?? 100,
+      freeDeliveryAbove: freeDeliveryAbove ?? null,
+    };
+
+    // Build taxSettings from documents or raw taxSettings
+    const taxSettings = rawTaxSettings || {
+      gstNumber:    documents.gst   || "",
+      fssaiLicense: documents.fssai || "",
+    };
+
+    // Build bankDetails from bank object
+    const bankDetails = {
+      accountName:   bank.accountHolder || "",
+      accountNumber: bank.accountNumber || "",
+      ifscCode:      bank.ifsc          || "",
+      bankName:      bank.bankName      || "",
+    };
+
     const restaurant = await Restaurant.create({
       owner: owner._id,
       name,
       description,
-      cuisines: cuisines || [],
-      address: address || {},
-      contact: contact || {},
-      timing: timing || {},
-      deliverySettings: deliverySettings || {},
-      taxSettings: taxSettings || {},
-      commission: commission || 10,
-      status: "pending",
-      onboardedBy: req.user._id,
+      cuisines:        cuisines   || [],
+      categories:      categories || [],
+      address:         address    || {},
+      contact:         contact    || {},
+      timing:          timing     || {},
+      deliverySettings,
+      taxSettings,
+      bankDetails,
+      commission:      commission || 10,
+      status:          "pending",
+      onboardedBy:     req.user._id,
     });
 
     return ApiResponse.send(res, 201, "Restaurant onboarded successfully", { restaurant, owner });

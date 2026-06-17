@@ -20,6 +20,7 @@ router.post("/verify-otp", ...verifyOtpValidator, validate, authController.verif
 router.post("/google", ...googleLoginValidator, validate, authController.googleLogin);
 router.post("/refresh-token", authController.refreshToken);
 router.post("/logout", authController.logout);
+router.post("/impersonate", authController.impersonateExchange);
 
 // Protected routes
 router.get("/me", auth, authController.getMe);

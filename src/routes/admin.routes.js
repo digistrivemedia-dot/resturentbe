@@ -53,6 +53,7 @@ const {
 const { sendNotification } = require("../controllers/admin.notification.controller");
 const { getSettings, updateSettings } = require("../controllers/admin.settings.controller");
 const { getLogs } = require("../controllers/admin.log.controller");
+const { getRestaurantLogins, addRestaurantLogin, resetLoginPassword, getImpersonateToken } = require("../controllers/admin.login.controller");
 
 // Apply auth + super_admin role to all routes
 router.use(auth, role("super_admin"));
@@ -68,6 +69,10 @@ router.put("/restaurants/:id", adminLog("updated", "restaurant"), updateRestaura
 router.put("/restaurants/:id/verify", adminLog("verified", "restaurant"), verifyRestaurant);
 router.put("/restaurants/:id/suspend", adminLog("suspended", "restaurant"), suspendRestaurant);
 router.put("/restaurants/:id/reactivate", adminLog("reactivated", "restaurant"), reactivateRestaurant);
+router.get("/restaurants/:id/logins", getRestaurantLogins);
+router.post("/restaurants/:id/logins", addRestaurantLogin);
+router.put("/restaurants/:id/logins/:userId/reset-password", resetLoginPassword);
+router.get("/restaurants/:id/logins/:userId/impersonate-token", getImpersonateToken);
 
 // Customers
 router.get("/customers", getCustomers);

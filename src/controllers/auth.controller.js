@@ -343,6 +343,33 @@ const getMe = async (req, res, next) => {
   }
 };
 
+// POST /auth/impersonate — Exchange short-lived impersonate token for full session
+const impersonateExchange = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    if (!token) throw new ApiError(400, "Token required");
+
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    if (!decoded.impersonate) throw new ApiError(400, "Invalid impersonate token");
+
+    const user = await User.findById(decoded.userId);
+    if (!user || user.status === "blocked") throw new ApiError(404, "User not found");
+
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+    setRefreshCookie(res, refreshToken);
+    setRoleCookie(res, user.role);
+    setUserInfoCookie(res, user);
+
+    return ApiResponse.send(res, 200, "Impersonation successful", {
+      token: accessToken,
+      user: { _id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar || null },
+    });
+  } catch (error) {
+    next(error instanceof ApiError ? error : new ApiError(401, "Invalid or expired impersonate token"));
+  }
+};
+
 // PUT /customer/profile — Update profile
 const updateProfile = async (req, res, next) => {
   try {
@@ -372,4 +399,5 @@ module.exports = {
   logout,
   getMe,
   updateProfile,
+  impersonateExchange,
 };
