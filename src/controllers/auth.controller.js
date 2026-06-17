@@ -18,6 +18,33 @@ const setRefreshCookie = (res, token) => {
   });
 };
 
+// Helper: set role cookie (readable by Next.js middleware for server-side route protection)
+const setRoleCookie = (res, role) => {
+  res.cookie("userRole", role, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+};
+
+// Helper: set user info cookie (readable by frontend JS — replaces localStorage)
+const setUserInfoCookie = (res, user) => {
+  const info = {
+    _id: user._id,
+    name: user.name || null,
+    email: user.email || null,
+    role: user.role,
+    avatar: user.avatar || null,
+  };
+  res.cookie("userInfo", JSON.stringify(info), {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+};
+
 // POST /auth/register — Email + password (for restaurant owners & admins)
 const register = async (req, res, next) => {
   try {
@@ -40,6 +67,8 @@ const register = async (req, res, next) => {
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
     setRefreshCookie(res, refreshToken);
+    setRoleCookie(res, user.role);
+    setUserInfoCookie(res, user);
 
     const userObj = user.toObject();
     delete userObj.password;
@@ -78,6 +107,8 @@ const login = async (req, res, next) => {
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
     setRefreshCookie(res, refreshToken);
+    setRoleCookie(res, user.role);
+    setUserInfoCookie(res, user);
 
     const userObj = user.toObject();
     delete userObj.password;
@@ -174,6 +205,8 @@ const verifyOtp = async (req, res, next) => {
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
     setRefreshCookie(res, refreshToken);
+    setRoleCookie(res, user.role);
+    setUserInfoCookie(res, user);
 
     ApiResponse.send(res, 200, "OTP verified successfully", {
       user,
@@ -239,6 +272,8 @@ const googleLogin = async (req, res, next) => {
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
     setRefreshCookie(res, refreshToken);
+    setRoleCookie(res, user.role);
+    setUserInfoCookie(res, user);
 
     ApiResponse.send(res, 200, "Google login successful", {
       user,
@@ -268,13 +303,17 @@ const refreshTokenHandler = async (req, res, next) => {
     const accessToken = generateAccessToken(user._id);
     const newRefreshToken = generateRefreshToken(user._id);
     setRefreshCookie(res, newRefreshToken);
+    setRoleCookie(res, user.role);
+    setUserInfoCookie(res, user); // keeps userInfo cookie fresh / repairs old sessions
 
     ApiResponse.send(res, 200, "Token refreshed", {
       token: accessToken,
     });
   } catch (error) {
-    // Clear invalid cookie
+    // Clear invalid cookies
     res.clearCookie("refreshToken");
+    res.clearCookie("userRole");
+    res.clearCookie("userInfo");
     next(error instanceof ApiError ? error : new ApiError(401, "Invalid refresh token"));
   }
 };
@@ -283,6 +322,8 @@ const refreshTokenHandler = async (req, res, next) => {
 const logout = async (req, res, next) => {
   try {
     res.clearCookie("refreshToken");
+    res.clearCookie("userRole");
+    res.clearCookie("userInfo");
     ApiResponse.send(res, 200, "Logged out successfully");
   } catch (error) {
     next(error);
