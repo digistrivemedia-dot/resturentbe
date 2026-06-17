@@ -6,6 +6,7 @@ const Notification = require("../models/Notification");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { ORDER_STATUS } = require("../utils/constants");
+const { getIo } = require("../socket");
 
 // POST /orders — Place a new order
 const placeOrder = async (req, res, next) => {
@@ -98,16 +99,8 @@ const placeOrder = async (req, res, next) => {
       });
     }
 
-    // 3. Check minimum order
-    const { deliverySettings } = restaurant;
-    if (deliverySettings?.minOrderAmount && subtotal < deliverySettings.minOrderAmount) {
-      throw new ApiError(
-        400,
-        `Minimum order amount is ₹${deliverySettings.minOrderAmount}`
-      );
-    }
-
     // 4. Calculate delivery fee
+    const { deliverySettings } = restaurant;
     let deliveryFee = 0;
     if (orderType !== "pickup") {
       deliveryFee = deliverySettings?.deliveryFee || 0;
@@ -241,6 +234,14 @@ const placeOrder = async (req, res, next) => {
     const populatedOrder = await Order.findById(order._id)
       .populate("restaurant", "name slug deliverySettings")
       .lean();
+
+    // Notify restaurant in real time
+    try {
+      const io = getIo();
+      if (io) {
+        io.to(`restaurant:${restaurant._id}`).emit("new_order", { order: populatedOrder });
+      }
+    } catch (e) {}
 
     ApiResponse.send(res, 201, "Order placed successfully", {
       order: populatedOrder,

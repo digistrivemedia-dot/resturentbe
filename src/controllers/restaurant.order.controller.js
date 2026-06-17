@@ -2,13 +2,21 @@ const Order = require("../models/Order");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
 const { ORDER_STATUS } = require("../utils/constants");
+const { getIo } = require("../socket");
+
+function emitOrderUpdate(restaurantId, order) {
+  try {
+    const io = getIo();
+    if (io) io.to(`restaurant:${restaurantId}`).emit("order_updated", { order });
+  } catch (e) {}
+}
 
 // Valid status transitions for restaurant
 const VALID_TRANSITIONS = {
   [ORDER_STATUS.CONFIRMED]: ORDER_STATUS.PREPARING,
   [ORDER_STATUS.PREPARING]: ORDER_STATUS.READY,
   [ORDER_STATUS.READY]: ORDER_STATUS.PICKED_UP,
-  [ORDER_STATUS.PICKED_UP]: ORDER_STATUS.OUT_FOR_DELIVERY,
+  [ORDER_STATUS.PICKED_UP]: ORDER_STATUS.DELIVERED,
   [ORDER_STATUS.OUT_FOR_DELIVERY]: ORDER_STATUS.DELIVERED,
 };
 
@@ -39,7 +47,7 @@ const getOrders = async (req, res, next) => {
       };
     } else if (filter === "history") {
       query.status = {
-        $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.CANCELLED],
+        $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.PICKED_UP, ORDER_STATUS.OUT_FOR_DELIVERY, ORDER_STATUS.CANCELLED],
       };
     }
 
@@ -120,6 +128,7 @@ const acceptOrder = async (req, res, next) => {
 
     await order.save();
 
+    emitOrderUpdate(req.restaurant._id, order);
     return ApiResponse.send(res, 200, "Order accepted", { order });
   } catch (error) {
     next(error);
@@ -157,6 +166,7 @@ const rejectOrder = async (req, res, next) => {
 
     await order.save();
 
+    emitOrderUpdate(req.restaurant._id, order);
     return ApiResponse.send(res, 200, "Order rejected", { order });
   } catch (error) {
     next(error);
@@ -209,6 +219,7 @@ const updateOrderStatus = async (req, res, next) => {
 
     await order.save();
 
+    emitOrderUpdate(req.restaurant._id, order);
     return ApiResponse.send(res, 200, "Order status updated", { order });
   } catch (error) {
     next(error);

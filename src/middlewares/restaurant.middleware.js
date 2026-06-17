@@ -3,7 +3,9 @@ const Restaurant = require("../models/Restaurant");
 
 const restaurantMiddleware = async (req, res, next) => {
   try {
-    const restaurant = await Restaurant.findOne({ owner: req.user._id });
+    const restaurant = await Restaurant.findOne({
+      $or: [{ owner: req.user._id }, { managers: req.user._id }],
+    });
 
     if (!restaurant) {
       throw new ApiError(404, "Restaurant not found for this user");

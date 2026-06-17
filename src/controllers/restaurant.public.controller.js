@@ -306,12 +306,14 @@ const search = async (req, res, next) => {
         .lean();
     }
 
-    // Search dishes
+    // Search dishes (only from active restaurants)
     if (type === "all" || type === "dishes") {
       const regex = new RegExp(query, "i");
+      const activeRestaurantIds = await Restaurant.find({ status: "active" }).distinct("_id");
       dishes = await MenuItem.find({
         status: "active",
         isAvailable: true,
+        restaurant: { $in: activeRestaurantIds },
         $or: [
           { name: regex },
           { category: regex },
