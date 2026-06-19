@@ -15,7 +15,7 @@ const createAdmin = async () => {
 
     const admin = await User.create({
       name: "Admin User",
-      email: "admin@digistrive.com",
+      email: "admin@cafesriisha.com",
       password: "admin123",
       role: "super_admin",
       authProvider: "email",

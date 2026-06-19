@@ -6,7 +6,7 @@ const ApiError = require("../utils/ApiError");
 const uploadToCloudinary = (buffer, folder, options = {}) => {
   return new Promise((resolve, reject) => {
     const uploadOptions = {
-      folder: `digistrive/${folder}`,
+      folder: `cafesriisha/${folder}`,
       resource_type: "image",
       transformation: [
         { quality: "auto:good", fetch_format: "auto" },

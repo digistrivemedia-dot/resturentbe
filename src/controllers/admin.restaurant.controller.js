@@ -111,9 +111,9 @@ const onboardRestaurant = async (req, res, next) => {
     }
 
     if (!owner) {
-      // Temp password: last 4 digits of phone + "@Digi", or random
+      // Temp password: last 4 digits of phone + "@Cafe", or random
       const tempPassword = ownerPhone
-        ? ownerPhone.slice(-4) + "@Digi"
+        ? ownerPhone.slice(-4) + "@Cafe"
         : Math.random().toString(36).slice(-8);
       owner = await User.create({
         name: ownerName,

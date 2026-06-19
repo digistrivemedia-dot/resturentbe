@@ -139,10 +139,10 @@ const sendOtp = async (req, res, next) => {
     // Send email
     await sendEmail({
       to: email,
-      subject: "Your DigiStrive Login OTP",
+      subject: "Your CafeSriisha Login OTP",
       html: `
         <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
-          <h2 style="color: #E23744;">DigiStrive</h2>
+          <h2 style="color: #E23744;">CafeSriisha</h2>
           <p>Your OTP for login is:</p>
           <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333; padding: 16px 0;">
             ${otp}

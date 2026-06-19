@@ -15,7 +15,7 @@ const getRestaurantLogins = async (req, res, next) => {
 
     const ownerPhone = restaurant.owner?.phone || "";
     const ownerInitialPassword = ownerPhone
-      ? ownerPhone.slice(-4) + "@Digi"
+      ? ownerPhone.slice(-4) + "@Cafe"
       : "Auto-generated (use Reset)";
 
     const logins = [
@@ -34,7 +34,7 @@ const getRestaurantLogins = async (req, res, next) => {
         email: m.email,
         phone: m.phone,
         isOwner: false,
-        initialPassword: m.phone ? m.phone.slice(-4) + "@Digi" : "Auto-generated (use Reset)",
+        initialPassword: m.phone ? m.phone.slice(-4) + "@Cafe" : "Auto-generated (use Reset)",
         createdAt: m.createdAt,
       })),
     ];
@@ -58,8 +58,8 @@ const addRestaurantLogin = async (req, res, next) => {
     if (existing) throw new ApiError(400, "A user with this email already exists");
 
     const tempPassword = phone
-      ? phone.slice(-4) + "@Digi"
-      : Math.random().toString(36).slice(-8) + "@Digi";
+      ? phone.slice(-4) + "@Cafe"
+      : Math.random().toString(36).slice(-8) + "@Cafe";
 
     const user = await User.create({
       name,
@@ -92,7 +92,7 @@ const resetLoginPassword = async (req, res, next) => {
     if (!user) throw new ApiError(404, "User not found");
 
     // Generate new password
-    const newPassword = Math.random().toString(36).slice(-6).toUpperCase() + "@Digi";
+    const newPassword = Math.random().toString(36).slice(-6).toUpperCase() + "@Cafe";
     user.password = newPassword;
     await user.save();
 
