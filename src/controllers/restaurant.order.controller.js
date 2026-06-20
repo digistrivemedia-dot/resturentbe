@@ -7,7 +7,10 @@ const { getIo } = require("../socket");
 function emitOrderUpdate(restaurantId, order) {
   try {
     const io = getIo();
-    if (io) io.to(`restaurant:${restaurantId}`).emit("order_updated", { order });
+    if (io) {
+      io.to(`restaurant:${restaurantId}`).emit("order_updated", { order });
+      io.to(`customer:${order.customer}`).emit("order_status_updated", { order });
+    }
   } catch (e) {}
 }
 
