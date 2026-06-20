@@ -9,11 +9,14 @@ const ApiResponse = require("./utils/ApiResponse");
 
 const app = express();
 
-// Rate limiter
+// Rate limiter — per IP, generous enough for dashboard polling + normal usage
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { success: false, message: "Too many requests, try again later" },
+  skip: (req) => req.path === "/health", // never rate-limit health checks
 });
 
 // Middlewares — CORS must come before helmet
