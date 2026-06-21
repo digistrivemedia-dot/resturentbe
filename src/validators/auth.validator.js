@@ -30,7 +30,7 @@ const verifyOtpValidator = [
 ];
 
 const googleLoginValidator = [
-  body("idToken").notEmpty().withMessage("Google ID token is required"),
+  body("accessToken").notEmpty().withMessage("Google access token is required"),
 ];
 
 const updateProfileValidator = [

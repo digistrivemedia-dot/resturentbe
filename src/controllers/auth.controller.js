@@ -221,12 +221,13 @@ const verifyOtp = async (req, res, next) => {
 // POST /auth/google — Google OAuth login
 const googleLogin = async (req, res, next) => {
   try {
-    const { idToken } = req.body;
+    const { accessToken } = req.body;
+    if (!accessToken) throw new ApiError(400, "accessToken is required");
 
-    // Verify Google token
-    const response = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`
-    );
+    // Verify access token and get user info from Google
+    const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
 
     if (!response.ok) {
       throw new ApiError(401, "Invalid Google token");
@@ -269,7 +270,7 @@ const googleLogin = async (req, res, next) => {
       throw new ApiError(403, "Your account has been blocked");
     }
 
-    const accessToken = generateAccessToken(user._id);
+    const jwtToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
     setRefreshCookie(res, refreshToken);
     setRoleCookie(res, user.role);
@@ -277,7 +278,7 @@ const googleLogin = async (req, res, next) => {
 
     ApiResponse.send(res, 200, "Google login successful", {
       user,
-      token: accessToken,
+      token: jwtToken,
       isNewUser,
     });
   } catch (error) {

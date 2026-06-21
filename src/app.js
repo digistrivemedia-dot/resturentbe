@@ -16,7 +16,7 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: "Too many requests, try again later" },
-  skip: (req) => req.path === "/health", // never rate-limit health checks
+  skip: (req) => req.path === "/health" || req.path.startsWith("/socket.io"),
 });
 
 // Middlewares — CORS must come before helmet
