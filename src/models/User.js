@@ -66,6 +66,8 @@ const userSchema = new mongoose.Schema(
       default: "active",
     },
     lastLogin: Date,
+    passwordResetAt: Date,  // set when admin manually resets the password
+    tempPassword: String,   // plain-text of the last admin-generated password (for admin display only)
   },
   { timestamps: true }
 );

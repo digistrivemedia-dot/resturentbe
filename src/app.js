@@ -20,8 +20,23 @@ const limiter = rateLimit({
 });
 
 // Middlewares — CORS must come before helmet
+const allowedOrigins = [
+  process.env.CLIENT_URL || "http://localhost:3000",
+  /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/, // local network (mobile dev)
+  /^http:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/,  // local network alt range
+  /^exp:\/\//,                              // Expo Go deep links
+];
+
 const corsOptions = {
-  origin: process.env.CLIENT_URL || "http://localhost:3000",
+  origin: (origin, callback) => {
+    // Allow requests with no origin (React Native, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    const allowed = allowedOrigins.some((o) =>
+      typeof o === "string" ? o === origin : o.test(origin)
+    );
+    if (allowed) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -34,6 +49,23 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 app.use(limiter);
+
+// Serve uploaded images as static files (development only)
+// In production, Nginx serves /var/www/uploads/ directly at /uploads/
+if (process.env.NODE_ENV !== "production") {
+  const path = require("path");
+  // Must set Cross-Origin-Resource-Policy: cross-origin so browsers allow
+  // <img> tags on localhost:3000 (Next.js) to load images from localhost:8000 (Express).
+  // Helmet sets same-origin by default which silently blocks cross-port image loads.
+  app.use(
+    "/uploads",
+    (req, res, next) => {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      next();
+    },
+    express.static(path.join(__dirname, "../../uploads"))
+  );
+}
 
 // Health check
 app.get("/api/v1/health", (req, res) => {

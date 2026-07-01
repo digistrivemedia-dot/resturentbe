@@ -112,14 +112,15 @@ const onboardRestaurant = async (req, res, next) => {
 
     if (!owner) {
       // Temp password: last 4 digits of phone + "@Cafe", or random
-      const tempPassword = ownerPhone
+      const tempPwd = ownerPhone
         ? ownerPhone.slice(-4) + "@Cafe"
-        : Math.random().toString(36).slice(-8);
+        : Math.random().toString(36).slice(-8) + "@Cafe";
       owner = await User.create({
         name: ownerName,
         email: ownerEmail,
         phone: ownerPhone,
-        password: tempPassword,
+        password: tempPwd,      // hashed by pre-save hook
+        tempPassword: tempPwd,  // plain text for admin display
         role: "restaurant_owner",
         authProvider: "email",
         isEmailVerified: true,
@@ -128,6 +129,15 @@ const onboardRestaurant = async (req, res, next) => {
       owner.role = "restaurant_owner";
       owner.name  = ownerName  || owner.name;
       owner.phone = ownerPhone || owner.phone;
+      // User existed (e.g., signed up via OTP/Google) — no password was ever set.
+      // Give them a temp password so they can log into the restaurant portal.
+      if (!owner.password) {
+        const tempPwd = ownerPhone
+          ? ownerPhone.slice(-4) + "@Cafe"
+          : Math.random().toString(36).slice(-8) + "@Cafe";
+        owner.password = tempPwd;
+        owner.tempPassword = tempPwd;
+      }
       await owner.save();
     }
 
@@ -261,6 +271,20 @@ const reactivateRestaurant = async (req, res, next) => {
   }
 };
 
+const deleteRestaurant = async (req, res, next) => {
+  try {
+    const restaurant = await Restaurant.findById(req.params.id);
+    if (!restaurant) throw new ApiError(404, "Restaurant not found");
+
+    restaurant.status = "deleted";
+    await restaurant.save();
+
+    return ApiResponse.send(res, 200, "Restaurant deleted");
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getRestaurants,
   getRestaurantById,
@@ -269,4 +293,5 @@ module.exports = {
   verifyRestaurant,
   suspendRestaurant,
   reactivateRestaurant,
+  deleteRestaurant,
 };

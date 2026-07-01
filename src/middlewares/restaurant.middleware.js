@@ -5,10 +5,11 @@ const restaurantMiddleware = async (req, res, next) => {
   try {
     const restaurant = await Restaurant.findOne({
       $or: [{ owner: req.user._id }, { managers: req.user._id }],
+      status: { $ne: "deleted" },
     });
 
     if (!restaurant) {
-      throw new ApiError(404, "Restaurant not found for this user");
+      throw new ApiError(403, "No active restaurant found for this account");
     }
 
     req.restaurant = restaurant;

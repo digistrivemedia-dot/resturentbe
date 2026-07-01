@@ -8,8 +8,8 @@ const jwt = require("jsonwebtoken");
 const getRestaurantLogins = async (req, res, next) => {
   try {
     const restaurant = await Restaurant.findById(req.params.id)
-      .populate("owner", "name email phone createdAt")
-      .populate("managers", "name email phone createdAt");
+      .populate("owner", "name email phone createdAt passwordResetAt tempPassword")
+      .populate("managers", "name email phone createdAt passwordResetAt tempPassword");
 
     if (!restaurant) throw new ApiError(404, "Restaurant not found");
 
@@ -18,15 +18,18 @@ const getRestaurantLogins = async (req, res, next) => {
       ? ownerPhone.slice(-4) + "@Cafe"
       : "Auto-generated (use Reset)";
 
+    const owner = restaurant.owner;
     const logins = [
       {
-        _id: restaurant.owner?._id,
-        name: restaurant.owner?.name,
-        email: restaurant.owner?.email,
-        phone: restaurant.owner?.phone,
+        _id: owner?._id,
+        name: owner?.name,
+        email: owner?.email,
+        phone: owner?.phone,
         isOwner: true,
-        initialPassword: ownerInitialPassword,
-        createdAt: restaurant.owner?.createdAt,
+        // If admin ever reset the password, show that; otherwise show the phone-derived initial one
+        displayPassword: owner?.tempPassword || ownerInitialPassword,
+        passwordWasReset: !!owner?.passwordResetAt,
+        createdAt: owner?.createdAt,
       },
       ...(restaurant.managers || []).map((m) => ({
         _id: m._id,
@@ -34,7 +37,8 @@ const getRestaurantLogins = async (req, res, next) => {
         email: m.email,
         phone: m.phone,
         isOwner: false,
-        initialPassword: m.phone ? m.phone.slice(-4) + "@Cafe" : "Auto-generated (use Reset)",
+        displayPassword: m.tempPassword || (m.phone ? m.phone.slice(-4) + "@Cafe" : null),
+        passwordWasReset: !!m.passwordResetAt,
         createdAt: m.createdAt,
       })),
     ];
@@ -93,7 +97,9 @@ const resetLoginPassword = async (req, res, next) => {
 
     // Generate new password
     const newPassword = Math.random().toString(36).slice(-6).toUpperCase() + "@Cafe";
-    user.password = newPassword;
+    user.password = newPassword;       // pre-save hook hashes this
+    user.tempPassword = newPassword;   // store plain text for admin display
+    user.passwordResetAt = new Date();
     await user.save();
 
     return ApiResponse.send(res, 200, "Password reset successfully", { newPassword });

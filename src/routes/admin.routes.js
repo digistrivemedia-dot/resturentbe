@@ -27,6 +27,7 @@ const {
   verifyRestaurant,
   suspendRestaurant,
   reactivateRestaurant,
+  deleteRestaurant,
 } = require("../controllers/admin.restaurant.controller");
 const {
   getCustomers,
@@ -69,6 +70,7 @@ router.put("/restaurants/:id", adminLog("updated", "restaurant"), updateRestaura
 router.put("/restaurants/:id/verify", adminLog("verified", "restaurant"), verifyRestaurant);
 router.put("/restaurants/:id/suspend", adminLog("suspended", "restaurant"), suspendRestaurant);
 router.put("/restaurants/:id/reactivate", adminLog("reactivated", "restaurant"), reactivateRestaurant);
+router.delete("/restaurants/:id", adminLog("deleted", "restaurant"), deleteRestaurant);
 router.get("/restaurants/:id/logins", getRestaurantLogins);
 router.post("/restaurants/:id/logins", addRestaurantLogin);
 router.put("/restaurants/:id/logins/:userId/reset-password", resetLoginPassword);

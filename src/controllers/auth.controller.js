@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const Restaurant = require("../models/Restaurant");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { generateAccessToken, generateRefreshToken } = require("../utils/generateToken");
@@ -99,6 +100,17 @@ const login = async (req, res, next) => {
 
     if (user.status === "blocked") {
       throw new ApiError(403, "Your account has been blocked");
+    }
+
+    // Restaurant owners must have at least one non-deleted restaurant
+    if (user.role === "restaurant_owner") {
+      const hasRestaurant = await Restaurant.findOne({
+        $or: [{ owner: user._id }, { managers: user._id }],
+        status: { $ne: "deleted" },
+      }).lean();
+      if (!hasRestaurant) {
+        throw new ApiError(403, "Your restaurant is no longer active. Please contact support.");
+      }
     }
 
     user.lastLogin = new Date();
