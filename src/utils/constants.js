@@ -32,6 +32,7 @@ const RESTAURANT_STATUS = {
 const COUPON_TYPE = {
   PERCENTAGE: "percentage",
   FLAT: "flat",
+  FREE_DELIVERY: "free_delivery",
 };
 
 const COUPON_SCOPE = {

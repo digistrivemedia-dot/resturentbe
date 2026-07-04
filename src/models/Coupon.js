@@ -59,6 +59,12 @@ const couponSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    applicableItems: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "MenuItem",
+      },
+    ],
     applicableCuisines: [String],
     applicablePaymentMethods: [String],
     isActive: {

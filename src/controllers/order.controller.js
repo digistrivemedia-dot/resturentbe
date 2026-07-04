@@ -158,7 +158,25 @@ const placeOrder = async (req, res, next) => {
         }
 
         // Calculate discount
-        if (coupon.type === "percentage") {
+        const isItemLevel = coupon.applicableItems && coupon.applicableItems.length > 0;
+        if (coupon.type === "free_delivery") {
+          // Will be subtracted from deliveryFee in totals below; store as-is for now
+          couponDiscount = 0; // set after deliveryFee is known
+        } else if (isItemLevel) {
+          const applicableIds = coupon.applicableItems.map((id) => id.toString());
+          const applicableTotal = items.reduce((sum, item) => {
+            if (applicableIds.includes(item.menuItem?.toString())) {
+              return sum + item.price * (item.quantity || 1);
+            }
+            return sum;
+          }, 0);
+          if (coupon.type === "percentage") {
+            couponDiscount = (applicableTotal * coupon.value) / 100;
+            if (coupon.maxDiscount) couponDiscount = Math.min(couponDiscount, coupon.maxDiscount);
+          } else {
+            couponDiscount = Math.min(coupon.value, applicableTotal);
+          }
+        } else if (coupon.type === "percentage") {
           couponDiscount = (subtotal * coupon.value) / 100;
           if (coupon.maxDiscount) {
             couponDiscount = Math.min(couponDiscount, coupon.maxDiscount);
@@ -177,6 +195,14 @@ const placeOrder = async (req, res, next) => {
     }
 
     // 6. Calculate totals
+    // Resolve free_delivery coupon discount now that deliveryFee is known
+    if (appliedCouponCode) {
+      const appliedCoupon = await Coupon.findOne({ code: appliedCouponCode }).lean();
+      if (appliedCoupon?.type === "free_delivery") {
+        couponDiscount = deliveryFee;
+      }
+    }
+
     const taxPercentage = 5;
     const taxAmount = Math.round(subtotal * (taxPercentage / 100) * 100) / 100;
     const platformFee = 3;

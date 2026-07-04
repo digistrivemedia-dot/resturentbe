@@ -46,7 +46,8 @@ const getAvailableCoupons = async (req, res, next) => {
 // POST /coupons/validate — Validate a coupon against cart
 const validateCoupon = async (req, res, next) => {
   try {
-    const { code, restaurantId, subtotal } = req.body;
+    // items: [{ menuItem: id, price: num, quantity: num }] — needed for item-level coupons
+    const { code, restaurantId, subtotal, items = [] } = req.body;
 
     if (!code) {
       throw new ApiError(400, "Coupon code is required");
@@ -98,13 +99,38 @@ const validateCoupon = async (req, res, next) => {
 
     // Calculate discount
     let discount = 0;
-    if (coupon.type === "percentage") {
-      discount = (subtotal * coupon.value) / 100;
-      if (coupon.maxDiscount) {
-        discount = Math.min(discount, coupon.maxDiscount);
+    const isItemLevel = coupon.applicableItems && coupon.applicableItems.length > 0;
+
+    if (coupon.type === "free_delivery") {
+      // Discount is calculated at order time (= deliveryFee); return 0 here as placeholder
+      discount = 0;
+    } else if (isItemLevel) {
+      // Calculate discount only on applicable items' total
+      const applicableIds = coupon.applicableItems.map((id) => id.toString());
+      const applicableTotal = items.reduce((sum, item) => {
+        if (applicableIds.includes(item.menuItem?.toString())) {
+          return sum + item.price * (item.quantity || 1);
+        }
+        return sum;
+      }, 0);
+
+      if (applicableTotal === 0) {
+        throw new ApiError(400, "This coupon applies to specific items not in your cart");
+      }
+
+      if (coupon.type === "percentage") {
+        discount = (applicableTotal * coupon.value) / 100;
+        if (coupon.maxDiscount) discount = Math.min(discount, coupon.maxDiscount);
+      } else {
+        discount = Math.min(coupon.value, applicableTotal);
       }
     } else {
-      discount = coupon.value;
+      if (coupon.type === "percentage") {
+        discount = (subtotal * coupon.value) / 100;
+        if (coupon.maxDiscount) discount = Math.min(discount, coupon.maxDiscount);
+      } else {
+        discount = coupon.value;
+      }
     }
 
     discount = Math.round(discount * 100) / 100;
@@ -117,6 +143,8 @@ const validateCoupon = async (req, res, next) => {
         type: coupon.type,
         value: coupon.value,
         maxDiscount: coupon.maxDiscount,
+        applicableItems: coupon.applicableItems,
+        isItemLevel,
         discount,
       },
     });
