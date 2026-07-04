@@ -10,6 +10,10 @@ const {
   search,
   searchSuggestions,
 } = require("../controllers/restaurant.public.controller");
+const { getHomeFeed } = require("../controllers/home.controller");
+
+// Home feed (nearby restaurants + food items)
+router.get("/home/feed", getHomeFeed);
 
 // Search (public)
 router.get("/search", search);

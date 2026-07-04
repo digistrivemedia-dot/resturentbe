@@ -55,6 +55,7 @@ const { sendNotification } = require("../controllers/admin.notification.controll
 const { getSettings, updateSettings } = require("../controllers/admin.settings.controller");
 const { getLogs } = require("../controllers/admin.log.controller");
 const { getRestaurantLogins, addRestaurantLogin, resetLoginPassword, getImpersonateToken } = require("../controllers/admin.login.controller");
+const { getCategories, createCategory, updateCategory, deleteCategory } = require("../controllers/admin.category.controller");
 
 // Apply auth + super_admin role to all routes
 router.use(auth, role("super_admin"));
@@ -104,6 +105,12 @@ router.post("/notifications/send", ...sendNotificationValidator, validate, admin
 // Platform Settings
 router.get("/settings", getSettings);
 router.put("/settings", ...updateSettingsValidator, validate, adminLog("updated", "settings"), updateSettings);
+
+// Platform Categories (for home page food sections)
+router.get("/categories", getCategories);
+router.post("/categories", createCategory);
+router.put("/categories/:id", updateCategory);
+router.delete("/categories/:id", deleteCategory);
 
 // Activity Logs
 router.get("/logs", getLogs);

@@ -197,7 +197,7 @@ const updateRestaurant = async (req, res, next) => {
     const allowed = [
       "name", "description", "cuisines", "address", "contact",
       "timing", "deliverySettings", "taxSettings", "bankDetails",
-      "commission", "isFeatured", "costForTwo", "categories",
+      "commission", "isFeatured", "costForTwo", "categories", "status",
     ];
 
     allowed.forEach((field) => {

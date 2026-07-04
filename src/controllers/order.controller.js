@@ -247,11 +247,21 @@ const placeOrder = async (req, res, next) => {
 
     await order.save();
 
-    // 8. Create notification for customer
+    // 8. Auto-confirm the order immediately
+    order.status = ORDER_STATUS.CONFIRMED;
+    order.statusHistory.push({
+      status: ORDER_STATUS.CONFIRMED,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+      note: "Auto-confirmed",
+    });
+    await order.save();
+
+    // 9. Create notification for customer
     await Notification.create({
       user: req.user._id,
-      title: "Order Placed!",
-      message: `Your order #${order.orderNumber} from ${restaurant.name} has been placed.`,
+      title: "Order Confirmed!",
+      message: `Your order #${order.orderNumber} from ${restaurant.name} has been confirmed.`,
       type: "order",
       data: { orderId: order._id, restaurantId: restaurant._id },
     });
@@ -266,6 +276,7 @@ const placeOrder = async (req, res, next) => {
       const io = getIo();
       if (io) {
         io.to(`restaurant:${restaurant._id}`).emit("new_order", { order: populatedOrder });
+        io.to(`restaurant:${restaurant._id}`).emit("order_status_updated", { order: populatedOrder });
       }
     } catch (e) {}
 

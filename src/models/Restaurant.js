@@ -36,6 +36,11 @@ const restaurantSchema = new mongoose.Schema(
       lat: Number,
       lng: Number,
     },
+    // GeoJSON point for geospatial queries — synced from address.lat/lng on save
+    location: {
+      type: { type: String, enum: ["Point"], default: "Point" },
+      coordinates: { type: [Number], default: undefined }, // [longitude, latitude]
+    },
     contact: {
       phone: String,
       email: String,
@@ -112,7 +117,19 @@ restaurantSchema.pre("save", async function () {
   this.slug = slug;
 });
 
+// Sync GeoJSON location from address.lat/lng before saving
+restaurantSchema.pre("save", function (next) {
+  if (this.address?.lat && this.address?.lng) {
+    this.location = {
+      type: "Point",
+      coordinates: [this.address.lng, this.address.lat],
+    };
+  }
+  next();
+});
+
 // Indexes
+restaurantSchema.index({ location: "2dsphere" });
 restaurantSchema.index({ slug: 1 });
 restaurantSchema.index({ status: 1 });
 restaurantSchema.index({ cuisines: 1 });
