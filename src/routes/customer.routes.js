@@ -3,7 +3,7 @@ const router = express.Router();
 const auth = require("../middlewares/auth.middleware");
 const validate = require("../middlewares/validate.middleware");
 const { updateProfileValidator } = require("../validators/auth.validator");
-const { addAddressValidator } = require("../validators/order.validator");
+const { addAddressValidator, updateAddressValidator } = require("../validators/order.validator");
 const { updateProfile } = require("../controllers/auth.controller");
 const {
   addAddress,
@@ -22,7 +22,7 @@ router.put("/profile", ...updateProfileValidator, validate, updateProfile);
 
 // Addresses
 router.post("/address", ...addAddressValidator, validate, addAddress);
-router.put("/address/:id", updateAddress);
+router.put("/address/:id", ...updateAddressValidator, validate, updateAddress);
 router.delete("/address/:id", deleteAddress);
 
 // Notifications

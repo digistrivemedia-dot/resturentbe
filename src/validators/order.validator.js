@@ -72,6 +72,27 @@ const addAddressValidator = [
     .withMessage("Full address is required")
     .isLength({ min: 10 })
     .withMessage("Address is too short"),
+  body("pincode")
+    .optional({ checkFalsy: true })
+    .trim()
+    .matches(/^\d{6}$/)
+    .withMessage("Pincode must be 6 digits"),
+];
+
+const updateAddressValidator = [
+  body("label")
+    .optional()
+    .isIn(["home", "work", "other"])
+    .withMessage("Label must be home, work, or other"),
+  body("fullAddress")
+    .optional()
+    .isLength({ min: 10 })
+    .withMessage("Address is too short"),
+  body("pincode")
+    .optional({ checkFalsy: true })
+    .trim()
+    .matches(/^\d{6}$/)
+    .withMessage("Pincode must be 6 digits"),
 ];
 
 const verifyPaymentValidator = [
@@ -86,5 +107,6 @@ module.exports = {
   rateOrderValidator,
   validateCouponValidator,
   addAddressValidator,
+  updateAddressValidator,
   verifyPaymentValidator,
 };

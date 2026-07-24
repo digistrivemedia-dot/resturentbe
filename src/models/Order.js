@@ -60,6 +60,7 @@ const orderSchema = new mongoose.Schema(
       label: String,
       fullAddress: String,
       landmark: String,
+      pincode: String,
       lat: Number,
       lng: Number,
     },

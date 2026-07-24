@@ -9,6 +9,7 @@ const addressSchema = new mongoose.Schema({
   },
   fullAddress: String,
   landmark: String,
+  pincode: String,
   lat: Number,
   lng: Number,
   isDefault: { type: Boolean, default: false },

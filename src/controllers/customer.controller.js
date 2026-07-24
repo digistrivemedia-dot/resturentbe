@@ -6,10 +6,10 @@ const ApiResponse = require("../utils/ApiResponse");
 // POST /customer/address — Add address
 const addAddress = async (req, res, next) => {
   try {
-    const { label, fullAddress, landmark, lat, lng, isDefault } = req.body;
+    const { label, fullAddress, landmark, pincode, lat, lng, isDefault } = req.body;
     const user = await User.findById(req.user._id);
 
-    const newAddress = { label, fullAddress, landmark, lat, lng, isDefault };
+    const newAddress = { label, fullAddress, landmark, pincode, lat, lng, isDefault };
 
     // If this is set as default, unset other defaults
     if (isDefault) {
@@ -38,7 +38,7 @@ const addAddress = async (req, res, next) => {
 const updateAddress = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { label, fullAddress, landmark, lat, lng, isDefault } = req.body;
+    const { label, fullAddress, landmark, pincode, lat, lng, isDefault } = req.body;
     const user = await User.findById(req.user._id);
 
     const address = user.addresses.id(id);
@@ -49,6 +49,7 @@ const updateAddress = async (req, res, next) => {
     if (label) address.label = label;
     if (fullAddress) address.fullAddress = fullAddress;
     if (landmark !== undefined) address.landmark = landmark;
+    if (pincode !== undefined) address.pincode = pincode;
     if (lat !== undefined) address.lat = lat;
     if (lng !== undefined) address.lng = lng;
 
