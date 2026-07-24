@@ -22,6 +22,13 @@ const placeOrder = async (req, res, next) => {
       couponCode,
       tip,
     } = req.body;
+    const normalizedOrderType = orderType || "delivery";
+    const isDeliveryOrder = normalizedOrderType === "delivery";
+    const scheduledDate = scheduledFor ? new Date(scheduledFor) : null;
+
+    if (scheduledDate && (Number.isNaN(scheduledDate.getTime()) || scheduledDate <= new Date())) {
+      throw new ApiError(400, "Scheduled time must be in the future");
+    }
 
     // 1. Validate restaurant
     const restaurant = await Restaurant.findById(restaurantId);
@@ -103,7 +110,7 @@ const placeOrder = async (req, res, next) => {
     // 4. Calculate delivery fee
     const { deliverySettings } = restaurant;
     let deliveryFee = 0;
-    if (orderType !== "pickup") {
+    if (isDeliveryOrder) {
       deliveryFee = deliverySettings?.deliveryFee || 0;
       if (
         deliverySettings?.freeDeliveryAbove &&
@@ -207,7 +214,7 @@ const placeOrder = async (req, res, next) => {
     const taxPercentage = 5;
     const taxAmount = Math.round(subtotal * (taxPercentage / 100) * 100) / 100;
     const platformFee = 3;
-    const tipAmount = tip || 0;
+    const tipAmount = isDeliveryOrder ? tip || 0 : 0;
     const total = Math.round(
       (subtotal + deliveryFee + taxAmount + platformFee + tipAmount - couponDiscount) * 100
     ) / 100;
@@ -231,9 +238,10 @@ const placeOrder = async (req, res, next) => {
         tip: tipAmount,
         total,
       },
-      deliveryAddress,
-      orderType: orderType || "delivery",
-      scheduledFor: scheduledFor || null,
+      deliveryAddress: isDeliveryOrder ? deliveryAddress : undefined,
+      restaurantAddress: restaurant.address,
+      orderType: normalizedOrderType,
+      scheduledFor: scheduledDate || null,
       paymentMethod: paymentMethod || "cod",
       paymentStatus: PAYMENT_STATUS.PENDING,
       estimatedDeliveryTime: deliverySettings?.avgDeliveryTime || 30,
@@ -293,7 +301,7 @@ const placeOrder = async (req, res, next) => {
 
     // Populate for response
     const populatedOrder = await Order.findById(order._id)
-      .populate("restaurant", "name slug deliverySettings")
+      .populate("restaurant", "name slug deliverySettings address")
       .lean();
 
     // Notify restaurant in real time
@@ -341,7 +349,7 @@ const getMyOrders = async (req, res, next) => {
 
     const [orders, total] = await Promise.all([
       Order.find(filter)
-        .populate("restaurant", "name slug cuisines rating")
+        .populate("restaurant", "name slug cuisines rating address")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))
@@ -540,7 +548,7 @@ const verifyPayment = async (req, res, next) => {
 
     // 5. Populate and notify restaurant
     const populatedOrder = await Order.findById(order._id)
-      .populate("restaurant", "name slug deliverySettings")
+      .populate("restaurant", "name slug deliverySettings address")
       .lean();
 
     try {

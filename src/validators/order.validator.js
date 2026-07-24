@@ -15,9 +15,18 @@ const placeOrderValidator = [
   body("items.*.quantity")
     .isInt({ min: 1 })
     .withMessage("Quantity must be at least 1"),
+  body("orderType")
+    .optional()
+    .isIn(["delivery", "pickup", "dine_in"])
+    .withMessage("Invalid order type"),
   body("deliveryAddress.fullAddress")
+    .if(body("orderType").custom((value) => !value || value === "delivery"))
     .notEmpty()
     .withMessage("Delivery address is required"),
+  body("scheduledFor")
+    .optional({ checkFalsy: true })
+    .isISO8601()
+    .withMessage("Scheduled time must be a valid date"),
   body("paymentMethod")
     .optional()
     .isIn(["online", "cod", "wallet"])

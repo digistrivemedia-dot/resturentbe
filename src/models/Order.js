@@ -64,9 +64,19 @@ const orderSchema = new mongoose.Schema(
       lat: Number,
       lng: Number,
     },
+    // Snapshot the restaurant location so customers can still find it later.
+    restaurantAddress: {
+      fullAddress: String,
+      area: String,
+      city: String,
+      state: String,
+      pincode: String,
+      lat: Number,
+      lng: Number,
+    },
     orderType: {
       type: String,
-      enum: ["delivery", "pickup"],
+      enum: ["delivery", "pickup", "dine_in"],
       default: "delivery",
     },
     scheduledFor: Date,

@@ -18,7 +18,7 @@ function emitOrderUpdate(restaurantId, order) {
 const VALID_TRANSITIONS = {
   [ORDER_STATUS.CONFIRMED]:        [ORDER_STATUS.PREPARING, ORDER_STATUS.READY],
   [ORDER_STATUS.PREPARING]:        [ORDER_STATUS.READY],
-  [ORDER_STATUS.READY]:            [ORDER_STATUS.PICKED_UP],
+  [ORDER_STATUS.READY]:            [ORDER_STATUS.PICKED_UP, ORDER_STATUS.DELIVERED],
   [ORDER_STATUS.PICKED_UP]:        [ORDER_STATUS.DELIVERED],
   [ORDER_STATUS.OUT_FOR_DELIVERY]: [ORDER_STATUS.DELIVERED],
 };
@@ -94,6 +94,7 @@ const getOrderById = async (req, res, next) => {
       restaurant: req.restaurant._id,
     })
       .populate("customer", "name phone email")
+      .populate("restaurant", "name address")
       .lean();
 
     if (!order) {
@@ -195,7 +196,12 @@ const updateOrderStatus = async (req, res, next) => {
 
     // Validate transition
     const allowedNext = VALID_TRANSITIONS[order.status];
-    if (!allowedNext || !allowedNext.includes(status)) {
+    const isDineInCompletion =
+      order.orderType === "dine_in" &&
+      order.status === ORDER_STATUS.READY &&
+      status === ORDER_STATUS.DELIVERED;
+    if (!allowedNext || !allowedNext.includes(status) ||
+      (status === ORDER_STATUS.DELIVERED && order.status === ORDER_STATUS.READY && !isDineInCompletion)) {
       throw new ApiError(
         400,
         `Cannot transition from "${order.status}" to "${status}"`
