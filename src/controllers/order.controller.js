@@ -5,8 +5,9 @@ const Coupon = require("../models/Coupon");
 const Notification = require("../models/Notification");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
-const { ORDER_STATUS } = require("../utils/constants");
+const { ORDER_STATUS, PAYMENT_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
+const { createRazorpayOrder, verifyPaymentSignature } = require("../services/razorpay.service");
 
 // POST /orders — Place a new order
 const placeOrder = async (req, res, next) => {
@@ -212,6 +213,7 @@ const placeOrder = async (req, res, next) => {
     ) / 100;
 
     // 7. Create order
+    const isOnlinePayment = paymentMethod === "online";
     const order = new Order({
       customer: req.user._id,
       restaurant: restaurant._id,
@@ -233,21 +235,44 @@ const placeOrder = async (req, res, next) => {
       orderType: orderType || "delivery",
       scheduledFor: scheduledFor || null,
       paymentMethod: paymentMethod || "cod",
-      paymentStatus: paymentMethod === "cod" ? "pending" : "pending",
+      paymentStatus: PAYMENT_STATUS.PENDING,
       estimatedDeliveryTime: deliverySettings?.avgDeliveryTime || 30,
-      status: ORDER_STATUS.PLACED,
+      status: isOnlinePayment ? ORDER_STATUS.PENDING_PAYMENT : ORDER_STATUS.PLACED,
       statusHistory: [
         {
-          status: ORDER_STATUS.PLACED,
+          status: isOnlinePayment ? ORDER_STATUS.PENDING_PAYMENT : ORDER_STATUS.PLACED,
           timestamp: new Date(),
           updatedBy: req.user._id,
         },
       ],
     });
 
+    // 8. For online payments — create Razorpay order and return details
+    if (isOnlinePayment) {
+      const rzpOrder = await createRazorpayOrder(total, order._id.toString(), {
+        orderNumber: order.orderNumber,
+      });
+      order.razorpayOrderId = rzpOrder.id;
+      await order.save();
+
+      return ApiResponse.send(res, 201, "Order created, complete payment", {
+        order: {
+          _id: order._id,
+          orderNumber: order.orderNumber,
+          pricing: order.pricing,
+        },
+        razorpay: {
+          orderId: rzpOrder.id,
+          amount: rzpOrder.amount,
+          currency: rzpOrder.currency,
+          keyId: process.env.RAZORPAY_KEY_ID,
+        },
+      });
+    }
+
+    // 9. For COD — auto-confirm the order immediately
     await order.save();
 
-    // 8. Auto-confirm the order immediately
     order.status = ORDER_STATUS.CONFIRMED;
     order.statusHistory.push({
       status: ORDER_STATUS.CONFIRMED,
@@ -257,7 +282,7 @@ const placeOrder = async (req, res, next) => {
     });
     await order.save();
 
-    // 9. Create notification for customer
+    // 10. Create notification for customer
     await Notification.create({
       user: req.user._id,
       title: "Order Confirmed!",
@@ -298,6 +323,7 @@ const getMyOrders = async (req, res, next) => {
       if (status === "active") {
         filter.status = {
           $in: [
+            ORDER_STATUS.PENDING_PAYMENT,
             ORDER_STATUS.PLACED,
             ORDER_STATUS.CONFIRMED,
             ORDER_STATUS.PREPARING,
@@ -371,7 +397,7 @@ const cancelOrder = async (req, res, next) => {
     }
 
     // Only allow cancellation for placed or confirmed orders
-    const cancellableStatuses = [ORDER_STATUS.PLACED, ORDER_STATUS.CONFIRMED];
+    const cancellableStatuses = [ORDER_STATUS.PENDING_PAYMENT, ORDER_STATUS.PLACED, ORDER_STATUS.CONFIRMED];
     if (!cancellableStatuses.includes(order.status)) {
       throw new ApiError(400, "Order cannot be cancelled at this stage");
     }
@@ -461,8 +487,81 @@ const rateOrder = async (req, res, next) => {
   }
 };
 
+// POST /orders/verify-payment — Verify Razorpay payment and confirm order
+const verifyPayment = async (req, res, next) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+    // 1. Find order by razorpayOrderId
+    const order = await Order.findOne({
+      razorpayOrderId: razorpay_order_id,
+      customer: req.user._id,
+    });
+    if (!order) {
+      throw new ApiError(404, "Order not found");
+    }
+    if (order.paymentStatus === PAYMENT_STATUS.PAID) {
+      throw new ApiError(400, "Payment already verified");
+    }
+
+    // 2. Verify signature
+    const isValid = verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
+    if (!isValid) {
+      order.paymentStatus = PAYMENT_STATUS.FAILED;
+      order.status = ORDER_STATUS.CANCELLED;
+      order.statusHistory.push({
+        status: ORDER_STATUS.CANCELLED,
+        timestamp: new Date(),
+        note: "Payment verification failed",
+      });
+      await order.save();
+      throw new ApiError(400, "Payment verification failed");
+    }
+
+    // 3. Mark as paid and confirm
+    order.paymentId = razorpay_payment_id;
+    order.paymentStatus = PAYMENT_STATUS.PAID;
+    order.status = ORDER_STATUS.CONFIRMED;
+    order.statusHistory.push(
+      { status: ORDER_STATUS.PLACED, timestamp: new Date(), note: "Payment verified" },
+      { status: ORDER_STATUS.CONFIRMED, timestamp: new Date(), updatedBy: req.user._id, note: "Auto-confirmed after payment" }
+    );
+    await order.save();
+
+    // 4. Create notification
+    const restaurant = await Restaurant.findById(order.restaurant);
+    await Notification.create({
+      user: req.user._id,
+      title: "Order Confirmed!",
+      message: `Your order #${order.orderNumber} from ${restaurant.name} has been confirmed.`,
+      type: "order",
+      data: { orderId: order._id, restaurantId: order.restaurant },
+    });
+
+    // 5. Populate and notify restaurant
+    const populatedOrder = await Order.findById(order._id)
+      .populate("restaurant", "name slug deliverySettings")
+      .lean();
+
+    try {
+      const io = getIo();
+      if (io) {
+        io.to(`restaurant:${order.restaurant}`).emit("new_order", { order: populatedOrder });
+        io.to(`restaurant:${order.restaurant}`).emit("order_status_updated", { order: populatedOrder });
+      }
+    } catch (e) {}
+
+    ApiResponse.send(res, 200, "Payment verified, order confirmed", {
+      order: populatedOrder,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   placeOrder,
+  verifyPayment,
   getMyOrders,
   getOrderById,
   cancelOrder,

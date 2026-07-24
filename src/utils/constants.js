@@ -5,6 +5,7 @@ const USER_ROLES = {
 };
 
 const ORDER_STATUS = {
+  PENDING_PAYMENT: "pending_payment",
   PLACED: "placed",
   CONFIRMED: "confirmed",
   PREPARING: "preparing",

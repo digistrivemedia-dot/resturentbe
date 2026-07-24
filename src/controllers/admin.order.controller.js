@@ -117,7 +117,22 @@ const processRefund = async (req, res, next) => {
 
     await order.save();
 
-    // TODO: Integrate with Razorpay refund API in Phase 8
+    // Process refund via Razorpay if payment was online
+    if (order.paymentId) {
+      try {
+        const { createRefund } = require("../services/razorpay.service");
+        const refund = await createRefund(order.paymentId, refundAmount, {
+          orderNumber: order.orderNumber,
+          reason: reason || "Admin refund",
+        });
+        order.cancellation.refundStatus = "processed";
+        await order.save();
+      } catch (refundErr) {
+        console.error("[Razorpay Refund] Failed:", refundErr.message);
+        order.cancellation.refundStatus = "pending";
+        await order.save();
+      }
+    }
 
     return ApiResponse.send(res, 200, "Refund processed", {
       order,

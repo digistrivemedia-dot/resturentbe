@@ -45,7 +45,15 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(helmet());
 app.use(cookieParser());
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({
+  limit: "10mb",
+  verify: (req, res, buf) => {
+    // Store raw body for Razorpay webhook signature verification
+    if (req.originalUrl.startsWith("/api/v1/webhooks")) {
+      req.rawBody = buf.toString();
+    }
+  },
+}));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 app.use(limiter);
@@ -92,6 +100,8 @@ const adminRoutes = require("./routes/admin.routes");
 app.use("/api/v1/admin", adminRoutes);
 const uploadRoutes = require("./routes/upload.routes");
 app.use("/api/v1/upload", uploadRoutes);
+const webhookRoutes = require("./routes/webhook.routes");
+app.use("/api/v1/webhooks", webhookRoutes);
 
 // 404 handler
 app.use((req, res) => {

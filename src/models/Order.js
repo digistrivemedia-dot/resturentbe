@@ -96,6 +96,7 @@ const orderSchema = new mongoose.Schema(
       default: PAYMENT_STATUS.PENDING,
     },
     paymentId: String,
+    razorpayOrderId: String,
     cancellation: {
       cancelledBy: {
         type: String,

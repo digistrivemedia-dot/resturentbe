@@ -6,9 +6,11 @@ const {
   placeOrderValidator,
   cancelOrderValidator,
   rateOrderValidator,
+  verifyPaymentValidator,
 } = require("../validators/order.validator");
 const {
   placeOrder,
+  verifyPayment,
   getMyOrders,
   getOrderById,
   cancelOrder,
@@ -19,6 +21,7 @@ const {
 router.use(auth);
 
 router.post("/", ...placeOrderValidator, validate, placeOrder);
+router.post("/verify-payment", ...verifyPaymentValidator, validate, verifyPayment);
 router.get("/", getMyOrders);
 router.get("/:id", getOrderById);
 router.post("/:id/cancel", ...cancelOrderValidator, validate, cancelOrder);
