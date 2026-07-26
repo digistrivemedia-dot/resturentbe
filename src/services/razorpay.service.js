@@ -1,10 +1,15 @@
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+let razorpay;
+if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+  razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
+} else {
+  console.warn("[Razorpay] RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET not set — payment features disabled");
+}
 
 // Create a Razorpay order
 async function createRazorpayOrder(amountInRupees, receipt, notes = {}) {

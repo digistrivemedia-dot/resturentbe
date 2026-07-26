@@ -38,8 +38,8 @@ const restaurantSchema = new mongoose.Schema(
     },
     // GeoJSON point for geospatial queries — synced from address.lat/lng on save
     location: {
-      type: { type: String, enum: ["Point"], default: "Point" },
-      coordinates: { type: [Number], default: undefined }, // [longitude, latitude]
+      type: { type: String, enum: ["Point"] },
+      coordinates: { type: [Number] },
     },
     contact: {
       phone: String,
@@ -52,6 +52,7 @@ const restaurantSchema = new mongoose.Schema(
       offDays: [String],
       isOpen: { type: Boolean, default: true },
     },
+    availablePincodes: [String],
     deliverySettings: {
       deliveryRadius: { type: Number, default: 5 },
       minOrderAmount: { type: Number, default: 100 },
@@ -100,32 +101,32 @@ const restaurantSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Auto-generate slug before saving
+// Auto-generate slug and sync location before saving
 restaurantSchema.pre("save", async function () {
-  if (!this.isModified("name")) return;
+  // Slug generation
+  if (this.isModified("name")) {
+    let baseSlug = slugify(this.name, { lower: true, strict: true });
+    let slug = baseSlug;
+    let counter = 1;
 
-  let baseSlug = slugify(this.name, { lower: true, strict: true });
-  let slug = baseSlug;
-  let counter = 1;
+    while (await mongoose.model("Restaurant").findOne({ slug, _id: { $ne: this._id } })) {
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
 
-  // Ensure unique slug
-  while (await mongoose.model("Restaurant").findOne({ slug, _id: { $ne: this._id } })) {
-    slug = `${baseSlug}-${counter}`;
-    counter++;
+    this.slug = slug;
   }
 
-  this.slug = slug;
-});
-
-// Sync GeoJSON location from address.lat/lng before saving
-restaurantSchema.pre("save", function (next) {
+  // Sync GeoJSON location from address.lat/lng
   if (this.address?.lat && this.address?.lng) {
     this.location = {
       type: "Point",
       coordinates: [this.address.lng, this.address.lat],
     };
+  } else {
+    // Clear location if no valid coordinates — prevents 2dsphere index error
+    this.location = undefined;
   }
-  next();
 });
 
 // Indexes

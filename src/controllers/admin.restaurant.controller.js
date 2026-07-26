@@ -91,6 +91,7 @@ const onboardRestaurant = async (req, res, next) => {
       owner: ownerData = {},
       name, description, cuisines, categories,
       address, contact, timing, commission,
+      availablePincodes,
       // flat delivery fields from frontend
       deliveryFee, deliveryRadius, avgDeliveryTime, minOrder, freeDeliveryAbove,
       // nested delivery settings (if frontend sends them this way)
@@ -173,6 +174,7 @@ const onboardRestaurant = async (req, res, next) => {
       address:         address    || {},
       contact:         contact    || {},
       timing:          timing     || {},
+      availablePincodes: availablePincodes || [],
       deliverySettings,
       taxSettings,
       bankDetails,
@@ -198,6 +200,7 @@ const updateRestaurant = async (req, res, next) => {
       "name", "description", "cuisines", "address", "contact",
       "timing", "deliverySettings", "taxSettings", "bankDetails",
       "commission", "isFeatured", "costForTwo", "categories", "status",
+      "availablePincodes",
     ];
 
     allowed.forEach((field) => {
