@@ -10,6 +10,7 @@ const FOLDER_MAP = {
   restaurant: "restaurants",
   avatar: "avatars",
   banner: "banners",
+  "restaurant-video": "restaurant-videos",
   general: "general",
 };
 
@@ -34,7 +35,7 @@ const storage = multer.diskStorage({
   },
 });
 
-const fileFilter = (req, file, cb) => {
+const imageFileFilter = (req, file, cb) => {
   const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
@@ -43,10 +44,26 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+const videoFileFilter = (req, file, cb) => {
+  const allowedTypes = ["video/mp4", "video/webm", "video/quicktime"];
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new ApiError(400, "Only mp4, webm, and mov videos are allowed"), false);
+  }
+};
+
 const upload = multer({
   storage,
-  fileFilter,
+  fileFilter: imageFileFilter,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 });
 
+const uploadVideo = multer({
+  storage,
+  fileFilter: videoFileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+});
+
 module.exports = upload;
+module.exports.uploadVideo = uploadVideo;

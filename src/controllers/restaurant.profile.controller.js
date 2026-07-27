@@ -24,6 +24,8 @@ const updateProfile = async (req, res, next) => {
       "categories",
       "logo",
       "coverImage",
+      "bannerImage",
+      "bannerVideo",
       "images",
     ];
 

@@ -6,6 +6,7 @@ const upload = require("../middlewares/upload.middleware");
 const {
   uploadImage,
   uploadImages,
+  uploadVideo,
   deleteImage,
 } = require("../controllers/upload.controller");
 
@@ -18,7 +19,10 @@ router.post("/image", upload.single("image"), uploadImage);
 // Multiple images upload (max 5)
 router.post("/images", upload.array("images", 5), uploadImages);
 
-// Delete image by public_id
+// Single video upload (max 50MB)
+router.post("/video", upload.uploadVideo.single("video"), uploadVideo);
+
+// Delete image or video by filename + folder
 router.delete("/image", deleteImage);
 
 module.exports = router;

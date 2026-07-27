@@ -58,6 +58,25 @@ const uploadImages = async (req, res, next) => {
   }
 };
 
+const uploadVideo = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      throw new ApiError(400, "No video file provided");
+    }
+
+    const url = buildFileUrl(req.file.path);
+
+    return ApiResponse.send(res, 200, "Video uploaded", {
+      url,
+      filename: req.file.filename,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const deleteImage = async (req, res, next) => {
   try {
     const { filename, folder } = req.body;
@@ -87,4 +106,4 @@ const deleteImage = async (req, res, next) => {
   }
 };
 
-module.exports = { uploadImage, uploadImages, deleteImage };
+module.exports = { uploadImage, uploadImages, uploadVideo, deleteImage };

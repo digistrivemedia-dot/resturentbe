@@ -23,7 +23,9 @@ const restaurantSchema = new mongoose.Schema(
       trim: true,
     },
     logo: String,
-    coverImage: String,
+    coverImage: String, // shown on the home page restaurant card
+    bannerImage: String, // shown at the top of the restaurant page — falls back to coverImage if unset
+    bannerVideo: String, // shown at the top of the restaurant page instead of bannerImage/coverImage, if set
     images: [String],
     cuisines: [String],
     categories: [String],
