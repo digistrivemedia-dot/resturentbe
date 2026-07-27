@@ -76,7 +76,7 @@ const orderSchema = new mongoose.Schema(
     },
     orderType: {
       type: String,
-      enum: ["delivery", "pickup", "dine_in"],
+      enum: ["delivery", "pickup", "dine_in", "self_service"],
       default: "delivery",
     },
     scheduledFor: Date,
@@ -98,7 +98,7 @@ const orderSchema = new mongoose.Schema(
     ],
     paymentMethod: {
       type: String,
-      enum: ["online", "cod", "wallet"],
+      enum: ["online", "cod"],
       default: "cod",
     },
     paymentStatus: {

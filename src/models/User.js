@@ -50,17 +50,6 @@ const userSchema = new mongoose.Schema(
     isPhoneVerified: { type: Boolean, default: false },
     addresses: [addressSchema],
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }],
-    wallet: {
-      balance: { type: Number, default: 0 },
-      transactions: [
-        {
-          amount: Number,
-          type: { type: String, enum: ["credit", "debit"] },
-          description: String,
-          date: { type: Date, default: Date.now },
-        },
-      ],
-    },
     status: {
       type: String,
       enum: ["active", "blocked", "deleted"],
