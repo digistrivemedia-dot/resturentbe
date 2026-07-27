@@ -349,6 +349,14 @@ const getMe = async (req, res, next) => {
     const user = await User.findById(req.user._id)
       .select("-password")
       .populate("favorites", "name slug cuisines rating deliverySettings costForTwo offers timing isVerified address.area address.city")
+      .populate({
+        path: "favoriteDishes",
+        select: "name image price discountedPrice isVeg description restaurant",
+        populate: {
+          path: "restaurant",
+          select: "name slug",
+        },
+      })
       .lean();
     ApiResponse.send(res, 200, "User profile fetched", { user });
   } catch (error) {

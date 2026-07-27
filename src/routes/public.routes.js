@@ -7,6 +7,7 @@ const {
   getRestaurantMenu,
   getRestaurantReviews,
   toggleFavorite,
+  toggleFavoriteDish,
   search,
   searchSuggestions,
 } = require("../controllers/restaurant.public.controller");
@@ -25,7 +26,10 @@ router.get("/restaurants/:slug", getRestaurantBySlug);
 router.get("/restaurants/:id/menu", getRestaurantMenu);
 router.get("/restaurants/:id/reviews", getRestaurantReviews);
 
-// Favorite (auth required)
+// Favorite restaurant (auth required)
 router.post("/restaurants/:id/favorite", auth, toggleFavorite);
+
+// Favorite dish (auth required)
+router.post("/dishes/:id/favorite", auth, toggleFavoriteDish);
 
 module.exports = router;

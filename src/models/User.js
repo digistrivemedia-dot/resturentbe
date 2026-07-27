@@ -50,6 +50,7 @@ const userSchema = new mongoose.Schema(
     isPhoneVerified: { type: Boolean, default: false },
     addresses: [addressSchema],
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" }],
+    favoriteDishes: [{ type: mongoose.Schema.Types.ObjectId, ref: "MenuItem" }],
     status: {
       type: String,
       enum: ["active", "blocked", "deleted"],

@@ -370,12 +370,51 @@ const searchSuggestions = async (req, res, next) => {
   }
 };
 
+// POST /dishes/:id/favorite — Toggle favourite dish (auth required)
+const toggleFavoriteDish = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const dish = await MenuItem.findById(id);
+    if (!dish) {
+      throw new ApiError(404, "Dish not found");
+    }
+
+    const user = await User.findById(userId);
+    const index = user.favoriteDishes.findIndex(
+      (d) => d.toString() === id.toString()
+    );
+
+    let isFavorite;
+    if (index > -1) {
+      user.favoriteDishes.splice(index, 1);
+      isFavorite = false;
+    } else {
+      user.favoriteDishes.push(id);
+      isFavorite = true;
+    }
+
+    await user.save();
+
+    ApiResponse.send(
+      res,
+      200,
+      isFavorite ? "Added to favourites" : "Removed from favourites",
+      { isFavorite, favoriteDishes: user.favoriteDishes }
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getRestaurants,
   getRestaurantBySlug,
   getRestaurantMenu,
   getRestaurantReviews,
   toggleFavorite,
+  toggleFavoriteDish,
   search,
   searchSuggestions,
 };
