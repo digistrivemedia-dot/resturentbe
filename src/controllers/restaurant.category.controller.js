@@ -1,4 +1,5 @@
 const MenuItem = require("../models/MenuItem");
+const MenuCategory = require("../models/MenuCategory");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
 
@@ -29,6 +30,12 @@ const getCategories = async (req, res, next) => {
         },
       },
     ]);
+
+    // Merge in any uploaded category images
+    const images = await MenuCategory.find({ restaurant: req.restaurant._id }).lean();
+    const imageMap = {};
+    images.forEach((c) => { imageMap[c.name] = c.image; });
+    categories.forEach((c) => { c.image = imageMap[c.name] || null; });
 
     return ApiResponse.send(res, 200, "Categories fetched", { categories });
   } catch (error) {
@@ -92,9 +99,47 @@ const updateCategory = async (req, res, next) => {
       { $set: { category: name.trim() } }
     );
 
+    // Keep the category's uploaded image attached under the new name
+    await MenuCategory.updateOne(
+      { restaurant: req.restaurant._id, name: oldName },
+      { $set: { name: name.trim() } }
+    );
+
     return ApiResponse.send(res, 200, "Category renamed", {
       modifiedCount: result.modifiedCount,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// PUT /restaurant/categories/:id/image — Set/replace a category's image
+const updateCategoryImage = async (req, res, next) => {
+  try {
+    const name = decodeURIComponent(req.params.id);
+    const { image } = req.body;
+
+    if (!image) {
+      throw new ApiError(400, "image URL is required");
+    }
+
+    const exists = await MenuItem.findOne({
+      restaurant: req.restaurant._id,
+      category: name,
+      status: "active",
+    }).lean();
+
+    if (!exists) {
+      throw new ApiError(404, "Category not found");
+    }
+
+    const category = await MenuCategory.findOneAndUpdate(
+      { restaurant: req.restaurant._id, name },
+      { $set: { image } },
+      { upsert: true, new: true }
+    );
+
+    return ApiResponse.send(res, 200, "Category image updated", { category });
   } catch (error) {
     next(error);
   }
@@ -159,6 +204,8 @@ const deleteCategory = async (req, res, next) => {
       await restaurant.save();
     }
 
+    await MenuCategory.deleteOne({ restaurant: req.restaurant._id, name: categoryName });
+
     return ApiResponse.send(res, 200, "Category deleted");
   } catch (error) {
     next(error);
@@ -169,6 +216,7 @@ module.exports = {
   getCategories,
   addCategory,
   updateCategory,
+  updateCategoryImage,
   reorderCategories,
   deleteCategory,
 };

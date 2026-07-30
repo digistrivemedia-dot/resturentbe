@@ -11,6 +11,7 @@ const FOLDER_MAP = {
   avatar: "avatars",
   banner: "banners",
   "restaurant-video": "restaurant-videos",
+  category: "categories",
   general: "general",
 };
 

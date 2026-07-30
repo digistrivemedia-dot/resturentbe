@@ -1,5 +1,6 @@
 const Restaurant = require("../models/Restaurant");
 const MenuItem = require("../models/MenuItem");
+const MenuCategory = require("../models/MenuCategory");
 const Review = require("../models/Review");
 const User = require("../models/User");
 const ApiError = require("../utils/ApiError");
@@ -172,9 +173,18 @@ const getRestaurantMenu = async (req, res, next) => {
       items: categoryMap[cat],
     }));
 
+    // Attach any owner-uploaded category images
+    const categoryDocs = await MenuCategory.find({
+      restaurant: id,
+      name: { $in: categories },
+    }).lean();
+    const categoryImages = {};
+    categoryDocs.forEach((c) => { categoryImages[c.name] = c.image; });
+
     ApiResponse.send(res, 200, "Menu fetched", {
       menu,
       categories,
+      categoryImages,
       totalItems: menuItems.length,
     });
   } catch (error) {
