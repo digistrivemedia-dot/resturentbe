@@ -13,6 +13,11 @@ const {
   markNotificationRead,
   markAllNotificationsRead,
 } = require("../controllers/customer.controller");
+const {
+  getMembershipStatus,
+  createMembershipOrder,
+  verifyMembershipPayment,
+} = require("../controllers/membership.controller");
 
 // All customer routes require auth
 router.use(auth);
@@ -29,5 +34,10 @@ router.delete("/address/:id", deleteAddress);
 router.get("/notifications", getNotifications);
 router.put("/notifications/:id/read", markNotificationRead);
 router.put("/notifications/read-all", markAllNotificationsRead);
+
+// Membership
+router.get("/membership", getMembershipStatus);
+router.post("/membership/checkout", createMembershipOrder);
+router.post("/membership/verify", verifyMembershipPayment);
 
 module.exports = router;

@@ -3,6 +3,7 @@ const MenuItem = require("../models/MenuItem");
 const Restaurant = require("../models/Restaurant");
 const Coupon = require("../models/Coupon");
 const Notification = require("../models/Notification");
+const PlatformSettings = require("../models/PlatformSettings");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { ORDER_STATUS, PAYMENT_STATUS } = require("../utils/constants");
@@ -237,12 +238,28 @@ const placeOrder = async (req, res, next) => {
       }
     }
 
+    // Membership discount — flat % off subtotal for active members (config via PlatformSettings)
+    let membershipDiscount = 0;
+    const isMember = req.user.membership?.expiresAt && new Date(req.user.membership.expiresAt) > new Date();
+    if (isMember) {
+      const discountSetting = await PlatformSettings.findOne({ key: "membershipDiscountPercent" }).lean();
+      const discountPercent = Number(discountSetting?.value ?? 20);
+      membershipDiscount = Math.round(subtotal * (discountPercent / 100) * 100) / 100;
+    }
+
+    // Membership and coupon discounts don't stack — whichever is worth more to the customer applies
+    if (membershipDiscount > couponDiscount) {
+      couponDiscount = 0;
+    } else {
+      membershipDiscount = 0;
+    }
+
     const taxPercentage = 5;
     const taxAmount = Math.round(subtotal * (taxPercentage / 100) * 100) / 100;
     const platformFee = 3;
     const tipAmount = isDeliveryOrder ? tip || 0 : 0;
     const total = Math.round(
-      (subtotal + deliveryFee + taxAmount + platformFee + tipAmount - couponDiscount) * 100
+      (subtotal + deliveryFee + taxAmount + platformFee + tipAmount - couponDiscount - membershipDiscount) * 100
     ) / 100;
 
     // 7. Create order
@@ -256,9 +273,10 @@ const placeOrder = async (req, res, next) => {
         deliveryFee,
         taxAmount,
         taxPercentage,
-        discount: couponDiscount,
+        discount: couponDiscount + membershipDiscount,
         couponCode: appliedCouponCode,
         couponDiscount,
+        membershipDiscount,
         packagingCharge: 0,
         platformFee,
         tip: tipAmount,

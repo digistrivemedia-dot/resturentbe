@@ -51,6 +51,7 @@ const orderSchema = new mongoose.Schema(
       discount: { type: Number, default: 0 },
       couponCode: String,
       couponDiscount: { type: Number, default: 0 },
+      membershipDiscount: { type: Number, default: 0 },
       packagingCharge: { type: Number, default: 0 },
       platformFee: { type: Number, default: 3 },
       tip: { type: Number, default: 0 },

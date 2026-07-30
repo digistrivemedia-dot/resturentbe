@@ -59,6 +59,16 @@ const userSchema = new mongoose.Schema(
     lastLogin: Date,
     passwordResetAt: Date,  // set when admin manually resets the password
     tempPassword: String,   // plain-text of the last admin-generated password (for admin display only)
+    membership: {
+      expiresAt: Date, // "is member" = expiresAt > now, checked lazily wherever needed (no cron)
+      startedAt: Date, // when the current active period began
+      lastPurchase: {
+        razorpayOrderId: String,
+        razorpayPaymentId: String,
+        amount: Number,
+        purchasedAt: Date,
+      },
+    },
   },
   { timestamps: true }
 );
