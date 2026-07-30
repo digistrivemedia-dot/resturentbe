@@ -102,6 +102,8 @@ const uploadRoutes = require("./routes/upload.routes");
 app.use("/api/v1/upload", uploadRoutes);
 const webhookRoutes = require("./routes/webhook.routes");
 app.use("/api/v1/webhooks", webhookRoutes);
+const deliveryRoutes = require("./routes/delivery.routes");
+app.use("/api/v1/delivery", deliveryRoutes);
 
 // 404 handler
 app.use((req, res) => {

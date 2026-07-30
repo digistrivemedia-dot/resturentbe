@@ -8,6 +8,7 @@ const { checkServiceability } = require("../services/flash.service");
 const getServiceability = async (req, res, next) => {
   try {
     const { restaurantId, dropLat, dropLng } = req.body;
+    console.log("Checking serviceability for:", { restaurantId, dropLat, dropLng });
 
     if (!restaurantId || !dropLat || !dropLng) {
       throw new ApiError(400, "restaurantId, dropLat and dropLng are required");
@@ -29,6 +30,7 @@ const getServiceability = async (req, res, next) => {
     let result;
     try {
       result = await checkServiceability(pickupLat, pickupLng, dropLat, dropLng);
+      console.log("Serviceability check result:", result);
     } catch (flashErr) {
       console.warn("[Delivery] Flash serviceability check failed:", flashErr.message);
       // If Flash API is down, don't block checkout

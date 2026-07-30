@@ -132,6 +132,16 @@ const orderSchema = new mongoose.Schema(
         lat: Number,
         lng: Number,
       },
+      flash: {
+        taskId: String,
+        status: String,
+        riderName: String,
+        riderContact: String,
+        trackingUrl: String,
+        rtoReason: String,
+        dispatchedAt: Date,
+        dispatchFailedReason: String,
+      },
     },
     rating: {
       foodRating: { type: Number, min: 1, max: 5 },

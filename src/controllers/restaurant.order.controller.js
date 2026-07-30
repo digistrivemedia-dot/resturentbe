@@ -3,6 +3,7 @@ const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
+const { createTask } = require("../services/flash.service");
 
 function emitOrderUpdate(restaurantId, order) {
   try {
@@ -188,7 +189,7 @@ const updateOrderStatus = async (req, res, next) => {
     const order = await Order.findOne({
       _id: req.params.id,
       restaurant: req.restaurant._id,
-    });
+    }).populate("customer", "name phone");
 
     if (!order) {
       throw new ApiError(404, "Order not found");
@@ -224,6 +225,47 @@ const updateOrderStatus = async (req, res, next) => {
     if (status === ORDER_STATUS.DELIVERED) {
       order.deliveryTracking = order.deliveryTracking || {};
       order.deliveryTracking.deliveredAt = new Date();
+    }
+
+    // Auto-dispatch a Flash rider once the food is ready (delivery orders only)
+    if (status === ORDER_STATUS.READY && order.orderType === "delivery") {
+      order.deliveryTracking = order.deliveryTracking || {};
+
+      if (order.paymentStatus !== "paid") {
+        // Flash's 3PL service rejects unpaid (COD) orders outright — no point calling the API
+        console.warn(`[Flash] Skipped dispatch for ${order.orderNumber} — order is COD/unpaid, Flash requires online payment`);
+        order.deliveryTracking.flash = {
+          status: "CANCELLED",
+          dispatchFailedReason: "Cash on Delivery orders aren't supported by Flash — arrange delivery manually",
+        };
+      } else {
+        console.log(`[Flash] Dispatching rider for ${order.orderNumber} (restaurant: ${req.restaurant.name})`);
+        try {
+          const flashResult = await createTask(order, req.restaurant, order.customer);
+          console.log(`[Flash] createTask response for ${order.orderNumber}:`, JSON.stringify(flashResult));
+
+          if (flashResult.status) {
+            order.deliveryTracking.flash = {
+              taskId: flashResult.TaskId || flashResult.taskId,
+              status: flashResult.Status_code,
+              dispatchedAt: new Date(),
+            };
+            console.log(`[Flash] Task created for ${order.orderNumber}: ${order.deliveryTracking.flash.taskId}`);
+          } else {
+            const reason = flashResult.message || "Rider not available";
+            order.deliveryTracking.flash = {
+              status: flashResult.Status_code || "CANCELLED",
+              dispatchFailedReason: reason,
+            };
+            console.warn(`[Flash] Task creation failed for ${order.orderNumber}: ${reason}`);
+          }
+        } catch (flashErr) {
+          order.deliveryTracking.flash = {
+            dispatchFailedReason: flashErr.message,
+          };
+          console.error(`[Flash] createTask error for order ${order.orderNumber}:`, flashErr.message);
+        }
+      }
     }
 
     await order.save();

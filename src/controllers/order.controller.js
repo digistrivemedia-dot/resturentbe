@@ -8,6 +8,7 @@ const ApiResponse = require("../utils/ApiResponse");
 const { ORDER_STATUS, PAYMENT_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
 const { createRazorpayOrder, verifyPaymentSignature } = require("../services/razorpay.service");
+const { cancelTask, checkServiceability } = require("../services/flash.service");
 
 // POST /orders — Place a new order
 const placeOrder = async (req, res, next) => {
@@ -107,11 +108,36 @@ const placeOrder = async (req, res, next) => {
       });
     }
 
-    // 4. Calculate delivery fee
+    // 4. Calculate delivery fee — real, distance-based cost from Flash when available,
+    // falling back to the restaurant's flat fee if coordinates are missing or Flash errors.
     const { deliverySettings } = restaurant;
     let deliveryFee = 0;
     if (isDeliveryOrder) {
-      deliveryFee = deliverySettings?.deliveryFee || 0;
+      const pickupLat = restaurant.address?.lat;
+      const pickupLng = restaurant.address?.lng;
+      const dropLat = deliveryAddress?.lat;
+      const dropLng = deliveryAddress?.lng;
+
+      if (pickupLat && pickupLng && dropLat && dropLng) {
+        try {
+          const flashResult = await checkServiceability(pickupLat, pickupLng, dropLat, dropLng);
+          const serviceable =
+            flashResult?.serviceability?.riderServiceAble === true &&
+            flashResult?.serviceability?.locationServiceAble === true;
+
+          if (!serviceable) {
+            throw new ApiError(400, "Delivery is not available at this address right now");
+          }
+          deliveryFee = flashResult.payouts?.total || deliverySettings?.deliveryFee || 0;
+        } catch (err) {
+          if (err instanceof ApiError) throw err;
+          console.warn("[Order] Flash serviceability check failed, using flat delivery fee:", err.message);
+          deliveryFee = deliverySettings?.deliveryFee || 0;
+        }
+      } else {
+        deliveryFee = deliverySettings?.deliveryFee || 0;
+      }
+
       if (
         deliverySettings?.freeDeliveryAbove &&
         subtotal >= deliverySettings.freeDeliveryAbove
@@ -417,6 +443,16 @@ const cancelOrder = async (req, res, next) => {
       refundAmount: order.pricing.total,
       refundStatus: order.paymentMethod === "cod" ? "processed" : "pending",
     };
+
+    // If a Flash rider was already dispatched, cancel that task too
+    const flashTaskId = order.deliveryTracking?.flash?.taskId;
+    if (flashTaskId) {
+      try {
+        await cancelTask(flashTaskId);
+      } catch (flashErr) {
+        console.error(`[Flash] cancelTask error for order ${order.orderNumber}:`, flashErr.message);
+      }
+    }
 
     await order.save();
 

@@ -1,6 +1,21 @@
+const crypto = require("crypto");
 const Order = require("../models/Order");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
+
+// Flash calls our webhook with "Authorization: Bearer <FLASH_WEBHOOK_TOKEN>" —
+// configured in the Flash dashboard's Configure Webhook section.
+function isValidFlashWebhook(req) {
+  const token = process.env.FLASH_WEBHOOK_TOKEN;
+  if (!token) return true; // not configured yet — allow through (matches pre-webhook-auth behavior)
+
+  const received = req.headers["authorization"] || "";
+  const expected = `Bearer ${token}`;
+  const receivedBuf = Buffer.from(received);
+  const expectedBuf = Buffer.from(expected);
+  if (receivedBuf.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(receivedBuf, expectedBuf);
+}
 
 // Flash status_code → our Order.status
 // Only statuses that require a status change are mapped here
@@ -24,6 +39,11 @@ function emitOrderUpdate(restaurantId, customerId, order) {
 // Flash pushes delivery status updates here
 const handleFlashWebhook = async (req, res) => {
   try {
+    if (!isValidFlashWebhook(req)) {
+      console.warn("[Flash Webhook] Rejected — missing/invalid Authorization header");
+      return res.status(401).json({ status: false, message: "Unauthorized" });
+    }
+
     const { status_code, data = {}, message } = req.body;
 
     // Always respond 200 quickly so Flash doesn't retry
@@ -88,7 +108,6 @@ const handleRazorpayWebhook = async (req, res) => {
     res.status(200).json({ status: "ok" });
 
     // Verify webhook signature
-    const crypto = require("crypto");
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
     const signature = req.headers["x-razorpay-signature"];
 
