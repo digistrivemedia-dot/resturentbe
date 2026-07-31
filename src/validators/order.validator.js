@@ -22,7 +22,9 @@ const placeOrderValidator = [
   body("deliveryAddress.fullAddress")
     .if(body("orderType").custom((value) => !value || value === "delivery"))
     .notEmpty()
-    .withMessage("Delivery address is required"),
+    .withMessage("Delivery address is required")
+    .isLength({ min: 10 })
+    .withMessage("Please provide a complete delivery address"),
   body("scheduledFor")
     .optional({ checkFalsy: true })
     .isISO8601()
