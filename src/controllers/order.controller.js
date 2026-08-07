@@ -256,7 +256,15 @@ const placeOrder = async (req, res, next) => {
 
     const taxPercentage = 5;
     const taxAmount = Math.round(subtotal * (taxPercentage / 100) * 100) / 100;
-    const platformFee = 3;
+
+    // Platform fee — flat charge added to every order, configurable via PlatformSettings
+    const [feeEnabledSetting, feeAmountSetting] = await Promise.all([
+      PlatformSettings.findOne({ key: "platformFeeEnabled" }).lean(),
+      PlatformSettings.findOne({ key: "platformFeeAmount" }).lean(),
+    ]);
+    const platformFeeEnabled = feeEnabledSetting?.value !== undefined ? !!feeEnabledSetting.value : true;
+    const platformFee = platformFeeEnabled ? Number(feeAmountSetting?.value ?? 3) : 0;
+
     const tipAmount = isDeliveryOrder ? tip || 0 : 0;
     const total = Math.round(
       (subtotal + deliveryFee + taxAmount + platformFee + tipAmount - couponDiscount - membershipDiscount) * 100

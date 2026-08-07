@@ -12,9 +12,13 @@ const {
   searchSuggestions,
 } = require("../controllers/restaurant.public.controller");
 const { getHomeFeed } = require("../controllers/home.controller");
+const { getPlatformFee } = require("../controllers/public.settings.controller");
 
 // Home feed (nearby restaurants + food items)
 router.get("/home/feed", getHomeFeed);
+
+// Platform fee (enabled/amount) — public, used by cart/checkout
+router.get("/settings/platform-fee", getPlatformFee);
 
 // Search (public)
 router.get("/search", search);
