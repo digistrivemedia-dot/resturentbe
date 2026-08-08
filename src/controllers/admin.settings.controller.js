@@ -34,6 +34,15 @@ const updateSettings = async (req, res, next) => {
       return ApiResponse.send(res, 400, "Settings object is required");
     }
 
+    // At least one order type must remain enabled — otherwise customers have no way to order
+    if (settings.orderTypesEnabled) {
+      const orderTypesValue = settings.orderTypesEnabled.value ?? settings.orderTypesEnabled;
+      const anyEnabled = Object.values(orderTypesValue || {}).some(Boolean);
+      if (!anyEnabled) {
+        return ApiResponse.send(res, 400, "At least one order type must stay enabled");
+      }
+    }
+
     const updates = [];
     for (const [key, data] of Object.entries(settings)) {
       const update = await PlatformSettings.findOneAndUpdate(

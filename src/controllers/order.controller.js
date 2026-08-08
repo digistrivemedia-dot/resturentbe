@@ -32,6 +32,13 @@ const placeOrder = async (req, res, next) => {
       throw new ApiError(400, "Scheduled time must be in the future");
     }
 
+    // Order type must be enabled platform-wide (superadmin controlled)
+    const orderTypesSetting = await PlatformSettings.findOne({ key: "orderTypesEnabled" }).lean();
+    const orderTypesEnabled = { delivery: true, pickup: true, dine_in: true, self_service: true, ...(orderTypesSetting?.value || {}) };
+    if (orderTypesEnabled[normalizedOrderType] === false) {
+      throw new ApiError(400, "This order type is currently unavailable");
+    }
+
     // 1. Validate restaurant
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant || restaurant.status !== "active") {

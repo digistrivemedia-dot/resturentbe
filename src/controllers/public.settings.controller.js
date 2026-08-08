@@ -22,4 +22,18 @@ const getPlatformFee = async (req, res, next) => {
   }
 };
 
-module.exports = { getPlatformFee };
+const DEFAULT_ORDER_TYPES_ENABLED = { delivery: true, pickup: true, dine_in: true, self_service: true };
+
+// GET /public/settings/order-types
+const getOrderTypes = async (req, res, next) => {
+  try {
+    const doc = await PlatformSettings.findOne({ key: "orderTypesEnabled" }).lean();
+    const orderTypes = { ...DEFAULT_ORDER_TYPES_ENABLED, ...(doc?.value || {}) };
+
+    return ApiResponse.send(res, 200, "Order types fetched", orderTypes);
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { getPlatformFee, getOrderTypes };
