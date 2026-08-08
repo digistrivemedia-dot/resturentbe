@@ -59,6 +59,13 @@ const {
   updateSettings,
   getPayouts,
 } = require("../controllers/restaurant.profile.controller");
+const {
+  getTickets,
+  getTicketById: getSupportTicketById,
+  addRestaurantMessage,
+  resolveTicket,
+} = require("../controllers/restaurant.support.controller");
+const { addMessageValidator } = require("../validators/support.validator");
 
 // Apply auth, role, and restaurant middleware to all routes
 router.use(auth, role("restaurant_owner"), restaurantMiddleware);
@@ -110,5 +117,11 @@ router.get("/profile", getProfile);
 router.put("/profile", updateProfile);
 router.put("/settings", updateSettings);
 router.get("/payouts", getPayouts);
+
+// Customer support tickets
+router.get("/support/tickets", getTickets);
+router.get("/support/tickets/:id", getSupportTicketById);
+router.post("/support/tickets/:id/messages", ...addMessageValidator, validate, addRestaurantMessage);
+router.put("/support/tickets/:id/resolve", resolveTicket);
 
 module.exports = router;

@@ -18,6 +18,15 @@ const {
   createMembershipOrder,
   verifyMembershipPayment,
 } = require("../controllers/membership.controller");
+const {
+  getCategories: getSupportCategories,
+  createTicket,
+  getMyTickets,
+  getTicketsForOrder,
+  getTicketById,
+  addCustomerMessage,
+} = require("../controllers/support.controller");
+const { createTicketValidator, addMessageValidator } = require("../validators/support.validator");
 
 // All customer routes require auth
 router.use(auth);
@@ -39,5 +48,13 @@ router.put("/notifications/read-all", markAllNotificationsRead);
 router.get("/membership", getMembershipStatus);
 router.post("/membership/checkout", createMembershipOrder);
 router.post("/membership/verify", verifyMembershipPayment);
+
+// Support tickets
+router.get("/support/categories", getSupportCategories);
+router.post("/support/tickets", ...createTicketValidator, validate, createTicket);
+router.get("/support/tickets", getMyTickets);
+router.get("/support/tickets/order/:orderId", getTicketsForOrder);
+router.get("/support/tickets/:id", getTicketById);
+router.post("/support/tickets/:id/messages", ...addMessageValidator, validate, addCustomerMessage);
 
 module.exports = router;

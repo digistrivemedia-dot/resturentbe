@@ -18,7 +18,7 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["order", "promotion", "system", "delivery"],
+      enum: ["order", "promotion", "system", "delivery", "support"],
       default: "system",
     },
     data: {
@@ -29,6 +29,10 @@ const notificationSchema = new mongoose.Schema(
       restaurantId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Restaurant",
+      },
+      ticketId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "SupportTicket",
       },
       link: String,
     },
