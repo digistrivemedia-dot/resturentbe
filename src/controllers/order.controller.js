@@ -1,5 +1,6 @@
 const Order = require("../models/Order");
 const MenuItem = require("../models/MenuItem");
+const MenuCategory = require("../models/MenuCategory");
 const Restaurant = require("../models/Restaurant");
 const Coupon = require("../models/Coupon");
 const Notification = require("../models/Notification");
@@ -10,6 +11,7 @@ const { ORDER_STATUS, PAYMENT_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
 const { createRazorpayOrder, verifyPaymentSignature } = require("../services/razorpay.service");
 const { cancelTask, checkServiceability } = require("../services/flash.service");
+const { isCategoryAvailableNow } = require("../utils/categoryAvailability");
 
 // POST /orders — Place a new order
 const placeOrder = async (req, res, next) => {
@@ -49,10 +51,18 @@ const placeOrder = async (req, res, next) => {
     let subtotal = 0;
     const validatedItems = [];
 
+    // Fetched once (not per-item) — a restaurant only has a handful of categories
+    const categoryDocs = await MenuCategory.find({ restaurant: restaurant._id }).lean();
+    const categoryDocMap = {};
+    categoryDocs.forEach((c) => { categoryDocMap[c.name] = c; });
+
     for (const cartItem of items) {
       const menuItem = await MenuItem.findById(cartItem.menuItemId);
       if (!menuItem || menuItem.status !== "active" || !menuItem.isAvailable) {
         throw new ApiError(400, `Item "${cartItem.name || "Unknown"}" is not available`);
+      }
+      if (!isCategoryAvailableNow(categoryDocMap[menuItem.category])) {
+        throw new ApiError(400, `"${menuItem.category}" is not available right now`);
       }
 
       // Determine base price (from variant or item)

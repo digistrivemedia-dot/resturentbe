@@ -5,6 +5,7 @@ const Review = require("../models/Review");
 const User = require("../models/User");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
+const { categoryAvailabilityInfo } = require("../utils/categoryAvailability");
 
 // GET /restaurants — List restaurants with filters, sort, pagination
 const getRestaurants = async (req, res, next) => {
@@ -168,18 +169,21 @@ const getRestaurantMenu = async (req, res, next) => {
       categoryMap[item.category].push(item);
     }
 
-    const menu = categories.map((cat) => ({
-      category: cat,
-      items: categoryMap[cat],
-    }));
-
-    // Attach any owner-uploaded category images
+    // Attach any owner-uploaded category images + live availability
     const categoryDocs = await MenuCategory.find({
       restaurant: id,
       name: { $in: categories },
     }).lean();
+    const categoryDocMap = {};
+    categoryDocs.forEach((c) => { categoryDocMap[c.name] = c; });
     const categoryImages = {};
     categoryDocs.forEach((c) => { categoryImages[c.name] = c.image; });
+
+    const menu = categories.map((cat) => ({
+      category: cat,
+      items: categoryMap[cat],
+      ...categoryAvailabilityInfo(categoryDocMap[cat]),
+    }));
 
     ApiResponse.send(res, 200, "Menu fetched", {
       menu,

@@ -1,8 +1,10 @@
 const Restaurant = require("../models/Restaurant");
 const MenuItem = require("../models/MenuItem");
+const MenuCategory = require("../models/MenuCategory");
 const PlatformCategory = require("../models/PlatformCategory");
 const Coupon = require("../models/Coupon");
 const ApiResponse = require("../utils/ApiResponse");
+const { isCategoryAvailableNow } = require("../utils/categoryAvailability");
 
 // GET /home/feed?lat=X&lng=Y&category=Biryani
 const getHomeFeed = async (req, res, next) => {
@@ -73,6 +75,18 @@ const getHomeFeed = async (req, res, next) => {
         .populate("restaurant", "name slug logo timing status address deliverySettings")
         .limit(30)
         .lean();
+
+      // Drop items whose category is currently disabled/out of schedule —
+      // mirrors the isAvailable:true filter above, just at the category level.
+      if (items.length > 0) {
+        const categoryDocs = await MenuCategory.find({
+          restaurant: { $in: restaurantIds },
+          name: { $in: [...new Set(items.map((i) => i.category))] },
+        }).lean();
+        const docMap = {};
+        categoryDocs.forEach((c) => { docMap[`${c.restaurant}:${c.name}`] = c; });
+        items = items.filter((item) => isCategoryAvailableNow(docMap[`${item.restaurant._id}:${item.category}`]));
+      }
 
       // Attach the best active coupon to each item
       if (items.length > 0) {

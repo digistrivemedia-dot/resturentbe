@@ -37,6 +37,7 @@ const {
   addCategory,
   updateCategory,
   updateCategoryImage,
+  updateCategoryAvailability,
   reorderCategories,
   deleteCategory,
 } = require("../controllers/restaurant.category.controller");
@@ -101,6 +102,7 @@ router.post("/categories", addCategory);
 router.put("/categories/reorder", reorderCategories);
 router.put("/categories/:id", updateCategory);
 router.put("/categories/:id/image", updateCategoryImage);
+router.put("/categories/:id/availability", updateCategoryAvailability);
 router.delete("/categories/:id", deleteCategory);
 
 // Addons

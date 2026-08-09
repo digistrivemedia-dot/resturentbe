@@ -2,6 +2,7 @@ const MenuItem = require("../models/MenuItem");
 const MenuCategory = require("../models/MenuCategory");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
+const { categoryAvailabilityInfo } = require("../utils/categoryAvailability");
 
 const getCategories = async (req, res, next) => {
   try {
@@ -31,11 +32,15 @@ const getCategories = async (req, res, next) => {
       },
     ]);
 
-    // Merge in any uploaded category images
-    const images = await MenuCategory.find({ restaurant: req.restaurant._id }).lean();
-    const imageMap = {};
-    images.forEach((c) => { imageMap[c.name] = c.image; });
-    categories.forEach((c) => { c.image = imageMap[c.name] || null; });
+    // Merge in any uploaded category images + availability settings
+    const docs = await MenuCategory.find({ restaurant: req.restaurant._id }).lean();
+    const docMap = {};
+    docs.forEach((c) => { docMap[c.name] = c; });
+    categories.forEach((c) => {
+      const doc = docMap[c.name];
+      c.image = doc?.image || null;
+      Object.assign(c, categoryAvailabilityInfo(doc));
+    });
 
     return ApiResponse.send(res, 200, "Categories fetched", { categories });
   } catch (error) {
@@ -145,6 +150,53 @@ const updateCategoryImage = async (req, res, next) => {
   }
 };
 
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+// PUT /restaurant/categories/:id/availability — manual toggle + daily schedules
+const updateCategoryAvailability = async (req, res, next) => {
+  try {
+    const name = decodeURIComponent(req.params.id);
+    const { isEnabled, schedules } = req.body;
+
+    const exists = await MenuItem.findOne({
+      restaurant: req.restaurant._id,
+      category: name,
+      status: "active",
+    }).lean();
+
+    if (!exists) {
+      throw new ApiError(404, "Category not found");
+    }
+
+    if (schedules !== undefined) {
+      if (!Array.isArray(schedules)) {
+        throw new ApiError(400, "schedules must be an array");
+      }
+      for (const w of schedules) {
+        if (!TIME_RE.test(w.startTime) || !TIME_RE.test(w.endTime)) {
+          throw new ApiError(400, "Each schedule window needs a valid startTime/endTime (HH:mm)");
+        }
+      }
+    }
+
+    const update = {};
+    if (isEnabled !== undefined) update.isEnabled = !!isEnabled;
+    if (schedules !== undefined) update.schedules = schedules.map((w) => ({ startTime: w.startTime, endTime: w.endTime }));
+
+    const category = await MenuCategory.findOneAndUpdate(
+      { restaurant: req.restaurant._id, name },
+      { $set: update },
+      { upsert: true, new: true }
+    );
+
+    return ApiResponse.send(res, 200, "Category availability updated", {
+      category: { name, image: category.image, isEnabled: category.isEnabled, schedules: category.schedules },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const reorderCategories = async (req, res, next) => {
   try {
     const { categories } = req.body;
@@ -217,6 +269,7 @@ module.exports = {
   addCategory,
   updateCategory,
   updateCategoryImage,
+  updateCategoryAvailability,
   reorderCategories,
   deleteCategory,
 };

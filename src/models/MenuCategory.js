@@ -16,6 +16,21 @@ const menuCategorySchema = new mongoose.Schema(
       trim: true,
     },
     image: String,
+    // Manual master switch — off always wins over any schedule below.
+    isEnabled: {
+      type: Boolean,
+      default: true,
+    },
+    // Daily recurring windows in "HH:mm" 24h local time (Asia/Kolkata). Empty =
+    // no time restriction (available whenever isEnabled is true). Multiple
+    // windows are OR'd together; a window may wrap midnight (e.g. 22:00-02:00).
+    schedules: [
+      {
+        startTime: { type: String, required: true },
+        endTime: { type: String, required: true },
+        _id: false,
+      },
+    ],
   },
   { timestamps: true }
 );
