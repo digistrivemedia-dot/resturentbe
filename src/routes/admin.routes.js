@@ -56,12 +56,32 @@ const { getSettings, updateSettings } = require("../controllers/admin.settings.c
 const { getLogs } = require("../controllers/admin.log.controller");
 const { getRestaurantLogins, addRestaurantLogin, resetLoginPassword, getImpersonateToken } = require("../controllers/admin.login.controller");
 const { getCategories, createCategory, updateCategory, deleteCategory } = require("../controllers/admin.category.controller");
+const {
+  getFilterOptions: getAnalyticsFilterOptions,
+  getOverview: getAnalyticsOverview,
+  getCities: getAnalyticsCities,
+  getRestaurantsLeaderboard,
+  getCustomersAnalytics: getAnalyticsCustomers,
+  getOrderMix,
+  getSupportHealth,
+  getDeliveryHealth,
+} = require("../controllers/admin.analytics.controller");
 
 // Apply auth + super_admin role to all routes
 router.use(auth, role("super_admin"));
 
 // Dashboard
 router.get("/dashboard", getDashboardStats);
+
+// Platform analytics
+router.get("/analytics/filter-options", getAnalyticsFilterOptions);
+router.get("/analytics/overview", getAnalyticsOverview);
+router.get("/analytics/cities", getAnalyticsCities);
+router.get("/analytics/restaurants", getRestaurantsLeaderboard);
+router.get("/analytics/customers", getAnalyticsCustomers);
+router.get("/analytics/order-mix", getOrderMix);
+router.get("/analytics/support-health", getSupportHealth);
+router.get("/analytics/delivery-health", getDeliveryHealth);
 
 // Restaurants
 router.get("/restaurants", getRestaurants);
