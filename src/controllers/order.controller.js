@@ -3,6 +3,7 @@ const MenuItem = require("../models/MenuItem");
 const MenuCategory = require("../models/MenuCategory");
 const Restaurant = require("../models/Restaurant");
 const Coupon = require("../models/Coupon");
+const Review = require("../models/Review");
 const Notification = require("../models/Notification");
 const PlatformSettings = require("../models/PlatformSettings");
 const ApiError = require("../utils/ApiError");
@@ -517,7 +518,7 @@ const cancelOrder = async (req, res, next) => {
 // POST /orders/:id/rate — Rate order
 const rateOrder = async (req, res, next) => {
   try {
-    const { foodRating, deliveryRating, review } = req.body;
+    const { itemRatings, deliveryRating, review, tags } = req.body;
     const order = await Order.findOne({
       _id: req.params.id,
       customer: req.user._id,
@@ -531,34 +532,77 @@ const rateOrder = async (req, res, next) => {
       throw new ApiError(400, "Can only rate delivered orders");
     }
 
-    if (order.rating?.foodRating) {
+    if (order.rating?.itemRatings?.length > 0) {
       throw new ApiError(400, "Order has already been rated");
     }
 
+    if (!Array.isArray(itemRatings) || itemRatings.length === 0) {
+      throw new ApiError(400, "Please rate at least one item");
+    }
+
+    // One rating per distinct menu item actually in this order — dedupe cart
+    // lines by menuItem so ordering the same dish twice needs only one rating.
+    const orderLinesByItem = new Map();
+    order.items.forEach((line) => {
+      if (line.menuItem) orderLinesByItem.set(String(line.menuItem), line);
+    });
+
+    const seen = new Set();
+    const validatedItemRatings = [];
+    for (const ir of itemRatings) {
+      const key = String(ir.menuItem);
+      const line = orderLinesByItem.get(key);
+      if (!line) throw new ApiError(400, "One of the rated items isn't part of this order");
+      if (!ir.rating || ir.rating < 1 || ir.rating > 5) {
+        throw new ApiError(400, "Each item rating must be between 1 and 5");
+      }
+      if (seen.has(key)) continue; // ignore accidental duplicates from the client
+      seen.add(key);
+      validatedItemRatings.push({ menuItem: line.menuItem, name: line.name, rating: ir.rating });
+    }
+    if (validatedItemRatings.length === 0) {
+      throw new ApiError(400, "Please rate at least one item");
+    }
+
+    const isDeliveryOrder = order.orderType === "delivery";
+    if (isDeliveryOrder && deliveryRating && (deliveryRating < 1 || deliveryRating > 5)) {
+      throw new ApiError(400, "Delivery rating must be between 1 and 5");
+    }
+    const finalDeliveryRating = isDeliveryOrder ? deliveryRating || undefined : undefined;
+    const safeTags = Array.isArray(tags) ? tags.filter((t) => typeof t === "string").slice(0, 10) : [];
+
+    const avgFoodRating = Math.round(
+      (validatedItemRatings.reduce((s, r) => s + r.rating, 0) / validatedItemRatings.length) * 10
+    ) / 10;
+
     order.rating = {
-      foodRating,
-      deliveryRating,
+      itemRatings: validatedItemRatings,
+      deliveryRating: finalDeliveryRating,
       review: review || "",
+      tags: safeTags,
       ratedAt: new Date(),
     };
-
     await order.save();
 
-    // Update restaurant average rating
+    // Create the matching Review document — this is what the restaurant-facing
+    // reviews page actually reads; previously nothing wrote here at all.
+    await Review.create({
+      order: order._id,
+      customer: req.user._id,
+      restaurant: order.restaurant,
+      itemRatings: validatedItemRatings,
+      foodRating: avgFoodRating,
+      deliveryRating: finalDeliveryRating,
+      review: review || "",
+      tags: safeTags,
+    });
+
+    // Restaurant's overall rating = average across every individual dish
+    // rating ever given, not one number per order.
     const ratingAgg = await Order.aggregate([
-      {
-        $match: {
-          restaurant: order.restaurant,
-          "rating.foodRating": { $exists: true, $ne: null },
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          avgRating: { $avg: "$rating.foodRating" },
-          totalReviews: { $sum: 1 },
-        },
-      },
+      { $match: { restaurant: order.restaurant, "rating.itemRatings.0": { $exists: true } } },
+      { $unwind: "$rating.itemRatings" },
+      { $group: { _id: null, avgRating: { $avg: "$rating.itemRatings.rating" }, totalReviews: { $sum: 1 } } },
     ]);
 
     if (ratingAgg.length > 0) {
@@ -566,6 +610,34 @@ const rateOrder = async (req, res, next) => {
         "rating.average": Math.round(ratingAgg[0].avgRating * 10) / 10,
         "rating.totalReviews": ratingAgg[0].totalReviews,
       });
+    }
+
+    // Notify the restaurant if any dish scored 2 stars or below
+    const lowRated = validatedItemRatings.filter((r) => r.rating <= 2);
+    if (lowRated.length > 0) {
+      const restaurant = await Restaurant.findById(order.restaurant).select("owner name").lean();
+      if (restaurant?.owner) {
+        const dishList = lowRated.map((r) => `${r.name} (${r.rating}★)`).join(", ");
+        await Notification.create({
+          user: restaurant.owner,
+          title: "Low rating received",
+          message: `${dishList} got a low rating on order #${order.orderNumber}.`,
+          type: "review",
+          data: { orderId: order._id, restaurantId: order.restaurant },
+        });
+        try {
+          const io = getIo();
+          if (io) {
+            io.to(`restaurant:${order.restaurant}`).emit("new_low_rating", {
+              orderId: order._id,
+              orderNumber: order.orderNumber,
+              lowRated,
+            });
+          }
+        } catch (e) {
+          // Real-time push is best-effort — the persisted notification already covers it
+        }
+      }
     }
 
     ApiResponse.send(res, 200, "Rating submitted", { order });

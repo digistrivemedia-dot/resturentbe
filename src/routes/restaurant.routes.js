@@ -53,7 +53,7 @@ const {
   updateCoupon,
   deleteCoupon,
 } = require("../controllers/restaurant.coupon.controller");
-const { getReviews, replyToReview } = require("../controllers/restaurant.review.controller");
+const { getReviews, getItemRatings, replyToReview } = require("../controllers/restaurant.review.controller");
 const {
   getProfile,
   updateProfile,
@@ -119,6 +119,7 @@ router.delete("/coupons/:id", deleteCoupon);
 
 // Reviews
 router.get("/reviews", getReviews);
+router.get("/reviews/item-ratings", getItemRatings);
 router.post("/reviews/:id/reply", ...replyToReviewValidator, validate, replyToReview);
 
 // Profile

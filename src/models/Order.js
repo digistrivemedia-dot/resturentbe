@@ -145,9 +145,19 @@ const orderSchema = new mongoose.Schema(
       },
     },
     rating: {
-      foodRating: { type: Number, min: 1, max: 5 },
+      // One rating per distinct menu item in the order — not per cart line, so
+      // ordering the same dish twice (e.g. two customizations) still gets one slot.
+      itemRatings: [
+        {
+          menuItem: { type: mongoose.Schema.Types.ObjectId, ref: "MenuItem" },
+          name: String,
+          rating: { type: Number, min: 1, max: 5 },
+          _id: false,
+        },
+      ],
       deliveryRating: { type: Number, min: 1, max: 5 },
       review: String,
+      tags: [String],
       ratedAt: Date,
     },
     estimatedDeliveryTime: Number,

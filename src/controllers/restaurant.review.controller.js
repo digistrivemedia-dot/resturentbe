@@ -39,6 +39,39 @@ const getReviews = async (req, res, next) => {
   }
 };
 
+// GET /restaurant/reviews/item-ratings — per-dish rating breakdown, worst first
+// so the admin immediately sees what's actually costing them stars.
+const getItemRatings = async (req, res, next) => {
+  try {
+    const itemRatings = await Review.aggregate([
+      { $match: { restaurant: req.restaurant._id } },
+      { $unwind: "$itemRatings" },
+      {
+        $group: {
+          _id: "$itemRatings.menuItem",
+          name: { $first: "$itemRatings.name" },
+          avgRating: { $avg: "$itemRatings.rating" },
+          totalRatings: { $sum: 1 },
+          lowRatingCount: { $sum: { $cond: [{ $lte: ["$itemRatings.rating", 2] }, 1, 0] } },
+        },
+      },
+      { $sort: { avgRating: 1 } },
+    ]);
+
+    return ApiResponse.send(res, 200, "Item ratings fetched", {
+      itemRatings: itemRatings.map((i) => ({
+        menuItem: i._id,
+        name: i.name,
+        avgRating: Math.round(i.avgRating * 10) / 10,
+        totalRatings: i.totalRatings,
+        lowRatingCount: i.lowRatingCount,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const replyToReview = async (req, res, next) => {
   try {
     const { text } = req.body;
@@ -71,5 +104,6 @@ const replyToReview = async (req, res, next) => {
 
 module.exports = {
   getReviews,
+  getItemRatings,
   replyToReview,
 };

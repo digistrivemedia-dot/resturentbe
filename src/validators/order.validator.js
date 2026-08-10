@@ -45,9 +45,15 @@ const cancelOrderValidator = [
 ];
 
 const rateOrderValidator = [
-  body("foodRating")
+  body("itemRatings")
+    .isArray({ min: 1 })
+    .withMessage("Please rate at least one item"),
+  body("itemRatings.*.menuItem")
+    .notEmpty()
+    .withMessage("Each item rating needs a menuItem id"),
+  body("itemRatings.*.rating")
     .isInt({ min: 1, max: 5 })
-    .withMessage("Food rating must be between 1 and 5"),
+    .withMessage("Each item rating must be between 1 and 5"),
   body("deliveryRating")
     .optional()
     .isInt({ min: 1, max: 5 })
@@ -58,6 +64,10 @@ const rateOrderValidator = [
     .trim()
     .isLength({ max: 1000 })
     .withMessage("Review must be under 1000 characters"),
+  body("tags")
+    .optional()
+    .isArray({ max: 10 })
+    .withMessage("Too many tags"),
 ];
 
 const validateCouponValidator = [
