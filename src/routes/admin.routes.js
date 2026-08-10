@@ -51,7 +51,12 @@ const {
   updateBanner,
   deleteBanner,
 } = require("../controllers/admin.banner.controller");
-const { sendNotification } = require("../controllers/admin.notification.controller");
+const {
+  sendNotification,
+  getNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+} = require("../controllers/admin.notification.controller");
 const { getSettings, updateSettings } = require("../controllers/admin.settings.controller");
 const { getLogs } = require("../controllers/admin.log.controller");
 const { getRestaurantLogins, addRestaurantLogin, resetLoginPassword, getImpersonateToken } = require("../controllers/admin.login.controller");
@@ -121,6 +126,9 @@ router.delete("/banners/:id", adminLog("deleted", "banner"), deleteBanner);
 
 // Notifications
 router.post("/notifications/send", ...sendNotificationValidator, validate, adminLog("sent", "notification"), sendNotification);
+router.get("/notifications", getNotifications);
+router.put("/notifications/:id/read", markNotificationRead);
+router.put("/notifications/read-all", markAllNotificationsRead);
 
 // Platform Settings
 router.get("/settings", getSettings);

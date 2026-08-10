@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const auth = require("../middlewares/auth.middleware");
+const validate = require("../middlewares/validate.middleware");
 const {
   getRestaurants,
   getRestaurantBySlug,
@@ -13,6 +14,8 @@ const {
 } = require("../controllers/restaurant.public.controller");
 const { getHomeFeed } = require("../controllers/home.controller");
 const { getPlatformFee, getOrderTypes } = require("../controllers/public.settings.controller");
+const { createContactMessage } = require("../controllers/contact.controller");
+const { createContactMessageValidator } = require("../validators/contact.validator");
 
 // Home feed (nearby restaurants + food items)
 router.get("/home/feed", getHomeFeed);
@@ -38,5 +41,8 @@ router.post("/restaurants/:id/favorite", auth, toggleFavorite);
 
 // Favorite dish (auth required)
 router.post("/dishes/:id/favorite", auth, toggleFavoriteDish);
+
+// Contact form (public) — notifies super admin
+router.post("/contact", createContactMessageValidator, validate, createContactMessage);
 
 module.exports = router;
