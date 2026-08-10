@@ -130,4 +130,53 @@ const getHomeFeed = async (req, res, next) => {
   }
 };
 
-module.exports = { getHomeFeed };
+// GET /home/showcase — real categories + real dishes for the public landing page
+const getLandingShowcase = async (req, res, next) => {
+  try {
+    const activeRestaurants = await Restaurant.find({ status: "active" }).select("_id").lean();
+    const restaurantIds = activeRestaurants.map((r) => r._id);
+
+    const items = await MenuItem.find({
+      restaurant: { $in: restaurantIds },
+      status: "active",
+      isAvailable: true,
+      image: { $nin: [null, ""] },
+    })
+      .sort({ sortOrder: 1, createdAt: -1 })
+      .populate("restaurant", "name slug address deliverySettings timing status")
+      .lean();
+
+    // Distinct categories, ranked by how many dishes fall under them
+    const categoryMap = new Map();
+    for (const item of items) {
+      if (!categoryMap.has(item.category)) {
+        categoryMap.set(item.category, { name: item.category, image: item.image, count: 0 });
+      }
+      categoryMap.get(item.category).count += 1;
+    }
+    const categories = [...categoryMap.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+
+    // One dish per category first (for variety), then fill up to 8
+    const seenCategories = new Set();
+    const dishes = [];
+    for (const item of items) {
+      if (dishes.length >= 8) break;
+      if (!seenCategories.has(item.category)) {
+        dishes.push(item);
+        seenCategories.add(item.category);
+      }
+    }
+    for (const item of items) {
+      if (dishes.length >= 8) break;
+      if (!dishes.some((d) => String(d._id) === String(item._id))) dishes.push(item);
+    }
+
+    ApiResponse.send(res, 200, "Landing showcase", { categories, dishes });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { getHomeFeed, getLandingShowcase };

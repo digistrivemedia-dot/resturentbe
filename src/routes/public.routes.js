@@ -12,13 +12,16 @@ const {
   search,
   searchSuggestions,
 } = require("../controllers/restaurant.public.controller");
-const { getHomeFeed } = require("../controllers/home.controller");
+const { getHomeFeed, getLandingShowcase } = require("../controllers/home.controller");
 const { getPlatformFee, getOrderTypes } = require("../controllers/public.settings.controller");
 const { createContactMessage } = require("../controllers/contact.controller");
 const { createContactMessageValidator } = require("../validators/contact.validator");
 
 // Home feed (nearby restaurants + food items)
 router.get("/home/feed", getHomeFeed);
+
+// Landing page showcase (real categories + real dishes, for the public marketing page)
+router.get("/home/showcase", getLandingShowcase);
 
 // Platform fee (enabled/amount) — public, used by cart/checkout
 router.get("/settings/platform-fee", getPlatformFee);
