@@ -399,17 +399,29 @@ const getMyOrders = async (req, res, next) => {
 
     if (status) {
       if (status === "active") {
-        filter.status = {
-          $in: [
-            ORDER_STATUS.PENDING_PAYMENT,
-            ORDER_STATUS.PLACED,
-            ORDER_STATUS.CONFIRMED,
-            ORDER_STATUS.PREPARING,
-            ORDER_STATUS.READY,
-            ORDER_STATUS.PICKED_UP,
-            ORDER_STATUS.OUT_FOR_DELIVERY,
-          ],
-        };
+        // A pending_payment order whose checkout was abandoned (tab closed,
+        // payment never completed) stays in that status forever — it should
+        // stop counting as "live" once it's clearly gone stale, rather than
+        // showing as an active order indefinitely.
+        const recentPendingPaymentCutoff = new Date(Date.now() - 30 * 60 * 1000);
+        filter.$or = [
+          {
+            status: {
+              $in: [
+                ORDER_STATUS.PLACED,
+                ORDER_STATUS.CONFIRMED,
+                ORDER_STATUS.PREPARING,
+                ORDER_STATUS.READY,
+                ORDER_STATUS.PICKED_UP,
+                ORDER_STATUS.OUT_FOR_DELIVERY,
+              ],
+            },
+          },
+          {
+            status: ORDER_STATUS.PENDING_PAYMENT,
+            createdAt: { $gte: recentPendingPaymentCutoff },
+          },
+        ];
       } else {
         filter.status = status;
       }
