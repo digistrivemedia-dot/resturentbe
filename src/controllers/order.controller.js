@@ -1,4 +1,5 @@
 const Order = require("../models/Order");
+const Cart = require("../models/Cart");
 const MenuItem = require("../models/MenuItem");
 const MenuCategory = require("../models/MenuCategory");
 const Restaurant = require("../models/Restaurant");
@@ -360,6 +361,9 @@ const placeOrder = async (req, res, next) => {
     });
     await order.save();
 
+    // Order placed — this customer's cart is no longer "abandoned"
+    await Cart.deleteOne({ customer: req.user._id }).catch(() => {});
+
     // 10. Create notification for customer
     await Notification.create({
       user: req.user._id,
@@ -698,6 +702,9 @@ const verifyPayment = async (req, res, next) => {
       { status: ORDER_STATUS.CONFIRMED, timestamp: new Date(), updatedBy: req.user._id, note: "Auto-confirmed after payment" }
     );
     await order.save();
+
+    // Order confirmed — this customer's cart is no longer "abandoned"
+    await Cart.deleteOne({ customer: req.user._id }).catch(() => {});
 
     // 4. Create notification
     const restaurant = await Restaurant.findById(order.restaurant);

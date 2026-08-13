@@ -27,6 +27,7 @@ const {
   addCustomerMessage,
 } = require("../controllers/support.controller");
 const { createTicketValidator, addMessageValidator } = require("../validators/support.validator");
+const { getCart, syncCart, clearCartRemote } = require("../controllers/customer.cart.controller");
 
 // All customer routes require auth
 router.use(auth);
@@ -48,6 +49,11 @@ router.put("/notifications/read-all", markAllNotificationsRead);
 router.get("/membership", getMembershipStatus);
 router.post("/membership/checkout", createMembershipOrder);
 router.post("/membership/verify", verifyMembershipPayment);
+
+// Cart (server-side mirror — enables cross-device recovery and abandoned-cart automations)
+router.get("/cart", getCart);
+router.put("/cart", syncCart);
+router.delete("/cart", clearCartRemote);
 
 // Support tickets
 router.get("/support/categories", getSupportCategories);
