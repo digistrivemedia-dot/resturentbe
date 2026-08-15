@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Order = require("../models/Order");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
+const { getIo } = require("../socket");
 
 const getCustomers = async (req, res, next) => {
   try {
@@ -38,8 +39,24 @@ const getCustomers = async (req, res, next) => {
       User.countDocuments(query),
     ]);
 
+    // Order count per customer on this page (avoids an N+1 query per row)
+    const customerIds = customers.map((c) => c._id);
+    const orderCounts = await Order.aggregate([
+      { $match: { customer: { $in: customerIds } } },
+      { $group: { _id: "$customer", count: { $sum: 1 } } },
+    ]);
+    const orderCountMap = {};
+    orderCounts.forEach((oc) => { orderCountMap[oc._id.toString()] = oc.count; });
+
+    const now = new Date();
+    const customersWithStats = customers.map((c) => ({
+      ...c,
+      totalOrders: orderCountMap[c._id.toString()] || 0,
+      isMember: !!(c.membership?.expiresAt && new Date(c.membership.expiresAt) > now),
+    }));
+
     return ApiResponse.send(res, 200, "Customers fetched", {
-      customers,
+      customers: customersWithStats,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -122,8 +139,37 @@ const blockCustomer = async (req, res, next) => {
   }
 };
 
+// POST /admin/customers/:id/send-membership-popup
+const sendMembershipPopup = async (req, res, next) => {
+  try {
+    const customer = await User.findOneAndUpdate(
+      { _id: req.params.id, role: "customer" },
+      { membershipPopupRequestedAt: new Date() },
+      { new: true }
+    ).select("-password");
+
+    if (!customer) {
+      throw new ApiError(404, "Customer not found");
+    }
+
+    // Deliver instantly if they're online right now; if not, the flag itself
+    // (checked on next app open / login) covers delivery either way.
+    try {
+      const io = getIo();
+      if (io) io.to(`customer:${customer._id}`).emit("membership_popup_requested", {});
+    } catch (e) {
+      // best-effort
+    }
+
+    return ApiResponse.send(res, 200, "Membership popup sent", { customer });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getCustomers,
   getCustomerById,
   blockCustomer,
+  sendMembershipPopup,
 };

@@ -33,6 +33,8 @@ const getDashboardStats = async (req, res, next) => {
       pendingRestaurants,
       pendingOrders,
       todayOrders,
+      totalMembersEverPurchased,
+      activeMembers,
     ] = await Promise.all([
       // Today's GMV & commission
       Order.aggregate([
@@ -90,6 +92,8 @@ const getDashboardStats = async (req, res, next) => {
       Order.countDocuments({
         createdAt: { $gte: todayStart, $lte: todayEnd },
       }),
+      User.countDocuments({ role: "customer", "membership.lastPurchase.purchasedAt": { $exists: true } }),
+      User.countDocuments({ role: "customer", "membership.expiresAt": { $gt: now } }),
     ]);
 
     const today = todayStats[0] || {};
@@ -113,6 +117,8 @@ const getDashboardStats = async (req, res, next) => {
       pendingApprovals: pendingRestaurants,
       pendingOrders,
       totalOrdersToday: todayOrders,
+      totalMembersEverPurchased,
+      activeMembers,
     };
 
     return ApiResponse.send(res, 200, "Dashboard stats fetched", { stats });

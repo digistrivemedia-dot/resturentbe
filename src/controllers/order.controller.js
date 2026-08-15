@@ -1,5 +1,6 @@
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
+const User = require("../models/User");
 const MenuItem = require("../models/MenuItem");
 const MenuCategory = require("../models/MenuCategory");
 const Restaurant = require("../models/Restaurant");
@@ -266,11 +267,24 @@ const placeOrder = async (req, res, next) => {
       membershipDiscount = Math.round(subtotal * (discountPercent / 100) * 100) / 100;
     }
 
-    // Membership and coupon discounts don't stack — whichever is worth more to the customer applies
-    if (membershipDiscount > couponDiscount) {
+    // New-customer discount — 50% off subtotal, uncapped, for each of a customer's
+    // first 4 orders ever (eligibility only advances once an order is actually confirmed —
+    // see the counter increment near the bottom of this function).
+    const isFirstFourOrder = (req.user.newCustomerOrdersUsed || 0) < 4;
+    let newCustomerDiscount = isFirstFourOrder ? Math.round(subtotal * 0.5 * 100) / 100 : 0;
+
+    // New-customer, membership, and coupon discounts don't stack — whichever is worth
+    // most to the customer applies; the other two are zeroed out.
+    const bestDiscount = Math.max(couponDiscount, membershipDiscount, newCustomerDiscount);
+    if (newCustomerDiscount > 0 && newCustomerDiscount === bestDiscount) {
       couponDiscount = 0;
+      membershipDiscount = 0;
+    } else if (membershipDiscount > 0 && membershipDiscount === bestDiscount) {
+      couponDiscount = 0;
+      newCustomerDiscount = 0;
     } else {
       membershipDiscount = 0;
+      newCustomerDiscount = 0;
     }
 
     const taxPercentage = 5;
@@ -286,7 +300,7 @@ const placeOrder = async (req, res, next) => {
 
     const tipAmount = isDeliveryOrder ? tip || 0 : 0;
     const total = Math.round(
-      (subtotal + deliveryFee + taxAmount + platformFee + tipAmount - couponDiscount - membershipDiscount) * 100
+      (subtotal + deliveryFee + taxAmount + platformFee + tipAmount - couponDiscount - membershipDiscount - newCustomerDiscount) * 100
     ) / 100;
 
     // 7. Create order
@@ -300,15 +314,17 @@ const placeOrder = async (req, res, next) => {
         deliveryFee,
         taxAmount,
         taxPercentage,
-        discount: couponDiscount + membershipDiscount,
+        discount: couponDiscount + membershipDiscount + newCustomerDiscount,
         couponCode: appliedCouponCode,
         couponDiscount,
         membershipDiscount,
+        newCustomerDiscount,
         packagingCharge: 0,
         platformFee,
         tip: tipAmount,
         total,
       },
+      isFirstFourOrder,
       deliveryAddress: isDeliveryOrder ? deliveryAddress : undefined,
       restaurantAddress: restaurant.address,
       orderType: normalizedOrderType,
@@ -364,6 +380,18 @@ const placeOrder = async (req, res, next) => {
     // Order placed — this customer's cart is no longer "abandoned"
     await Cart.deleteOne({ customer: req.user._id }).catch(() => {});
 
+    // Advance new-customer discount eligibility now that the order is actually
+    // confirmed (not just placed) — an abandoned/failed order shouldn't burn it.
+    let triggerMembershipPopup = false;
+    if (isFirstFourOrder) {
+      const updatedUser = await User.findByIdAndUpdate(
+        req.user._id,
+        { $inc: { newCustomerOrdersUsed: 1 } },
+        { new: true }
+      ).select("newCustomerOrdersUsed").lean();
+      triggerMembershipPopup = updatedUser?.newCustomerOrdersUsed === 4;
+    }
+
     // 10. Create notification for customer
     await Notification.create({
       user: req.user._id,
@@ -389,6 +417,7 @@ const placeOrder = async (req, res, next) => {
 
     ApiResponse.send(res, 201, "Order placed successfully", {
       order: populatedOrder,
+      triggerMembershipPopup,
     });
   } catch (error) {
     next(error);
@@ -706,6 +735,17 @@ const verifyPayment = async (req, res, next) => {
     // Order confirmed — this customer's cart is no longer "abandoned"
     await Cart.deleteOne({ customer: req.user._id }).catch(() => {});
 
+    // Advance new-customer discount eligibility now that payment is actually confirmed
+    let triggerMembershipPopup = false;
+    if (order.isFirstFourOrder) {
+      const updatedUser = await User.findByIdAndUpdate(
+        req.user._id,
+        { $inc: { newCustomerOrdersUsed: 1 } },
+        { new: true }
+      ).select("newCustomerOrdersUsed").lean();
+      triggerMembershipPopup = updatedUser?.newCustomerOrdersUsed === 4;
+    }
+
     // 4. Create notification
     const restaurant = await Restaurant.findById(order.restaurant);
     await Notification.create({
@@ -731,6 +771,7 @@ const verifyPayment = async (req, res, next) => {
 
     ApiResponse.send(res, 200, "Payment verified, order confirmed", {
       order: populatedOrder,
+      triggerMembershipPopup,
     });
   } catch (error) {
     next(error);

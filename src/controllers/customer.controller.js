@@ -156,6 +156,16 @@ const markAllNotificationsRead = async (req, res, next) => {
   }
 };
 
+// PUT /customer/membership-popup/seen — clears the pending popup flag once shown
+const markMembershipPopupSeen = async (req, res, next) => {
+  try {
+    await User.updateOne({ _id: req.user._id }, { membershipPopupRequestedAt: null });
+    return ApiResponse.send(res, 200, "Membership popup acknowledged");
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   addAddress,
   updateAddress,
@@ -163,4 +173,5 @@ module.exports = {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  markMembershipPopupSeen,
 };

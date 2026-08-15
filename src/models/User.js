@@ -69,6 +69,14 @@ const userSchema = new mongoose.Schema(
         purchasedAt: Date,
       },
     },
+    // Counts toward the "first 4 orders get 50% off" new-customer promo — incremented
+    // only when an order is actually confirmed (not on abandoned/pending-payment orders),
+    // so a failed checkout doesn't burn the customer's discount eligibility.
+    newCustomerOrdersUsed: { type: Number, default: 0 },
+    // Set when a super admin or restaurant owner sends this customer the
+    // membership popup — the customer's app shows it once (live via socket if
+    // they're online, otherwise on next app open) and clears this back to null.
+    membershipPopupRequestedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

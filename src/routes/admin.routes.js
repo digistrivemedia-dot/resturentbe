@@ -33,6 +33,7 @@ const {
   getCustomers,
   getCustomerById,
   blockCustomer,
+  sendMembershipPopup,
 } = require("../controllers/admin.customer.controller");
 const {
   getOrders,
@@ -106,6 +107,7 @@ router.get("/restaurants/:id/logins/:userId/impersonate-token", getImpersonateTo
 router.get("/customers", getCustomers);
 router.get("/customers/:id", getCustomerById);
 router.put("/customers/:id/block", adminLog("toggled_block", "customer"), blockCustomer);
+router.post("/customers/:id/send-membership-popup", adminLog("sent_membership_popup", "customer"), sendMembershipPopup);
 
 // Orders
 router.get("/orders", getOrders);

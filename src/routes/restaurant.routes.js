@@ -18,6 +18,10 @@ const {
 // Controllers
 const { getDashboardStats } = require("../controllers/restaurant.dashboard.controller");
 const {
+  getCustomers: getRestaurantCustomers,
+  sendMembershipPopup: sendRestaurantMembershipPopup,
+} = require("../controllers/restaurant.customer.controller");
+const {
   getOrders,
   getOrderById,
   acceptOrder,
@@ -80,6 +84,10 @@ router.use(auth, role("restaurant_owner"), restaurantMiddleware);
 
 // Dashboard
 router.get("/dashboard", getDashboardStats);
+
+// Customers
+router.get("/customers", getRestaurantCustomers);
+router.post("/customers/:id/send-membership-popup", sendRestaurantMembershipPopup);
 
 // Orders
 router.get("/orders", getOrders);

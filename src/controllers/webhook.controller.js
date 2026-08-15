@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
+const User = require("../models/User");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
 
@@ -141,6 +142,9 @@ const handleRazorpayWebhook = async (req, res) => {
       }
       await order.save();
       await Cart.deleteOne({ customer: order.customer }).catch(() => {});
+      if (order.isFirstFourOrder) {
+        await User.updateOne({ _id: order.customer }, { $inc: { newCustomerOrdersUsed: 1 } }).catch(() => {});
+      }
       emitOrderUpdate(order.restaurant, order.customer, order);
       console.log(`[Razorpay Webhook] Order ${order.orderNumber} payment captured`);
     }

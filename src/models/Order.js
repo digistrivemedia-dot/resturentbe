@@ -52,11 +52,16 @@ const orderSchema = new mongoose.Schema(
       couponCode: String,
       couponDiscount: { type: Number, default: 0 },
       membershipDiscount: { type: Number, default: 0 },
+      newCustomerDiscount: { type: Number, default: 0 },
       packagingCharge: { type: Number, default: 0 },
       platformFee: { type: Number, default: 3 },
       tip: { type: Number, default: 0 },
       total: { type: Number, required: true },
     },
+    // Snapshot of eligibility at creation time — separate from pricing.newCustomerDiscount
+    // (which is 0 if membership/coupon was worth more instead), so the customer's discount
+    // counter still advances correctly even on orders where the 50% wasn't the one applied.
+    isFirstFourOrder: { type: Boolean, default: false },
     deliveryAddress: {
       label: String,
       fullAddress: String,

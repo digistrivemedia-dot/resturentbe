@@ -12,6 +12,7 @@ const {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  markMembershipPopupSeen,
 } = require("../controllers/customer.controller");
 const {
   getMembershipStatus,
@@ -49,6 +50,7 @@ router.put("/notifications/read-all", markAllNotificationsRead);
 router.get("/membership", getMembershipStatus);
 router.post("/membership/checkout", createMembershipOrder);
 router.post("/membership/verify", verifyMembershipPayment);
+router.put("/membership-popup/seen", markMembershipPopupSeen);
 
 // Cart (server-side mirror — enables cross-device recovery and abandoned-cart automations)
 router.get("/cart", getCart);
