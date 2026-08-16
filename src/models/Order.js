@@ -134,9 +134,12 @@ const orderSchema = new mongoose.Schema(
       assignedAt: Date,
       pickedUpAt: Date,
       deliveredAt: Date,
+      // Rider's last known position — populated from Flash's webhook if/when it
+      // includes coordinates (unconfirmed as of writing; see webhook.controller.js).
       currentLocation: {
         lat: Number,
         lng: Number,
+        updatedAt: Date,
       },
       flash: {
         taskId: String,

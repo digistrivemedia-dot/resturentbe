@@ -44,6 +44,13 @@ const placeOrder = async (req, res, next) => {
       throw new ApiError(400, "This order type is currently unavailable");
     }
 
+    // Delivery requires online payment — Flash (our delivery partner) can't
+    // dispatch a rider for unpaid orders, so a COD delivery order would never
+    // get a rider or live tracking. Pickup/dine-in can still pay cash in person.
+    if (isDeliveryOrder && paymentMethod === "cod") {
+      throw new ApiError(400, "Cash on Delivery isn't available for delivery orders — please pay online");
+    }
+
     // 1. Validate restaurant
     const restaurant = await Restaurant.findById(restaurantId);
     if (!restaurant || restaurant.status !== "active") {

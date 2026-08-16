@@ -9,6 +9,26 @@ const headers = {
   "access-token": FLASH_ACCESS_TOKEN,
 };
 
+// drop_details.city is a REQUIRED field for createTask, but nothing in this
+// app captures a structured city for a customer's delivery address (only
+// fullAddress/lat/lng — see Order.deliveryAddress and User.addresses). This
+// resolves one from the coordinates we do have, right before dispatch.
+// Nominatim's usage policy requires a real User-Agent and caps free use at
+// ~1 req/sec — fine here since this only runs once per delivery order.
+async function reverseGeocodeCity(lat, lng) {
+  try {
+    const res = await axios.get("https://nominatim.openstreetmap.org/reverse", {
+      params: { lat, lon: lng, format: "json" },
+      headers: { "User-Agent": "SriIshaCafe/1.0 (delivery-dispatch)" },
+      timeout: 5000,
+    });
+    const addr = res.data?.address || {};
+    return addr.city || addr.town || addr.village || addr.county || "";
+  } catch (e) {
+    return "";
+  }
+}
+
 // POST /getServiceability
 // Returns { riderServiceAble, locationServiceAble, payouts: { total, price, tax } }
 async function checkServiceability(pickupLat, pickupLng, dropLat, dropLng) {
@@ -27,6 +47,10 @@ async function checkServiceability(pickupLat, pickupLng, dropLat, dropLng) {
 // POST /createTask
 // Returns { status, TaskId, vendor_order_id, message, Status_code }
 async function createTask(order, restaurant, customer) {
+  // city is required by Flash but not something this app stores for a
+  // delivery address — resolve it from the coordinates we do have.
+  const dropCity = await reverseGeocodeCity(order.deliveryAddress.lat, order.deliveryAddress.lng);
+
   const res = await axios.post(
     `${FLASH_BASE_URL}/createTask`,
     {
@@ -41,6 +65,9 @@ async function createTask(order, restaurant, customer) {
       pickup_details: {
         name: restaurant.name,
         contact_number: restaurant.contact?.phone || "",
+        // Per Flash's real API spec, createTask wants lat/lng as numbers —
+        // unlike getServiceability, which wants them as strings. Confirmed
+        // against their official docs, not guessed.
         latitude: restaurant.address.lat,
         longitude: restaurant.address.lng,
         address: restaurant.address.fullAddress || "",
@@ -53,7 +80,7 @@ async function createTask(order, restaurant, customer) {
         latitude: order.deliveryAddress.lat,
         longitude: order.deliveryAddress.lng,
         address: order.deliveryAddress.fullAddress || "",
-        city: "",
+        city: dropCity,
       },
       order_items: order.items.map((item) => ({
         id: String(item.menuItem),
