@@ -532,12 +532,18 @@ const cancelOrder = async (req, res, next) => {
       throw new ApiError(400, "Order cannot be cancelled at this stage");
     }
 
+    // An order can be cancelled while still pending_payment (customer closed
+    // the Razorpay modal, or the payment failed) — nothing was ever actually
+    // captured in that case, so there's nothing to refund. Only treat this as
+    // a real pending refund when a payment was genuinely collected.
+    const wasPaid = order.paymentStatus === "paid";
+
     order.status = ORDER_STATUS.CANCELLED;
     order.cancellation = {
       cancelledBy: "customer",
       reason: reason || "Cancelled by customer",
-      refundAmount: order.pricing.total,
-      refundStatus: order.paymentMethod === "cod" ? "processed" : "pending",
+      refundAmount: wasPaid ? order.pricing.total : 0,
+      refundStatus: !wasPaid || order.paymentMethod === "cod" ? "processed" : "pending",
     };
 
     // If a Flash rider was already dispatched, cancel that task too
