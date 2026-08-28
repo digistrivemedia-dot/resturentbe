@@ -9,6 +9,11 @@ const jwt = require("jsonwebtoken");
 // In-memory OTP store (move to Redis later)
 const otpStore = new Map();
 
+// Fixed, non-expiring OTP for the Google Play review account, so reviewers
+// aren't blocked behind an inbox they can't access. Set via env, not code.
+const PLAY_REVIEW_EMAIL = process.env.PLAY_REVIEW_EMAIL?.toLowerCase();
+const PLAY_REVIEW_OTP = process.env.PLAY_REVIEW_OTP;
+
 // Helper: set refresh token cookie
 const setRefreshCookie = (res, token) => {
   res.cookie("refreshToken", token, {
@@ -139,13 +144,15 @@ const sendOtp = async (req, res, next) => {
   try {
     const { email } = req.body;
 
-    // Generate 6-digit OTP
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const isReviewAccount = PLAY_REVIEW_EMAIL && PLAY_REVIEW_OTP && email.toLowerCase() === PLAY_REVIEW_EMAIL;
 
-    // Store with 5-min expiry
+    // Generate 6-digit OTP (fixed, non-expiring for the review account)
+    const otp = isReviewAccount ? PLAY_REVIEW_OTP : String(Math.floor(100000 + Math.random() * 900000));
+
+    // Store with 5-min expiry (review account OTP never expires)
     otpStore.set(email, {
       otp,
-      expiresAt: Date.now() + 5 * 60 * 1000,
+      expiresAt: isReviewAccount ? Infinity : Date.now() + 5 * 60 * 1000,
     });
 
     // Send email
@@ -189,8 +196,10 @@ const verifyOtp = async (req, res, next) => {
       throw new ApiError(400, "Invalid OTP");
     }
 
-    // OTP valid — delete it
-    otpStore.delete(email);
+    // OTP valid — delete it (keep the review account's OTP reusable)
+    if (stored.expiresAt !== Infinity) {
+      otpStore.delete(email);
+    }
 
     // Find or create user
     let user = await User.findOne({ email });
