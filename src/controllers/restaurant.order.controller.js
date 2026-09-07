@@ -245,7 +245,7 @@ const updateOrderStatus = async (req, res, next) => {
       } else if (missingProfileFields.length > 0) {
         // Flash's API hard-rejects the request when these are blank (confirmed via
         // its own validation error), so check before calling rather than after.
-        const reason = `Restaurant profile is missing ${missingProfileFields.join(" and ")} — update it under Restaurant Settings > Profile, then retry`;
+        const reason = `Restaurant profile is missing ${missingProfileFields.join(" and ")} — update it under Settings > Location & Hours, then retry`;
         console.warn(`[Flash] Skipped dispatch for ${order.orderNumber} — ${reason}`);
         order.deliveryTracking.flash = {
           status: "CANCELLED",

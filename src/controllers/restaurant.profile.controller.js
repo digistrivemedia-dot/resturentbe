@@ -19,6 +19,7 @@ const updateProfile = async (req, res, next) => {
       "description",
       "cuisines",
       "timing",
+      "weeklyHours",
       "costForTwo",
       "categories",
       "logo",

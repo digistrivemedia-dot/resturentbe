@@ -24,5 +24,6 @@ router.post("/impersonate", authController.impersonateExchange);
 
 // Protected routes
 router.get("/me", auth, authController.getMe);
+router.put("/profile", auth, ...updateProfileValidator, validate, authController.updateProfile);
 
 module.exports = router;

@@ -32,6 +32,7 @@ const restaurantSchema = new mongoose.Schema(
     address: {
       fullAddress: String,
       area: String,
+      landmark: String,
       city: String,
       state: String,
       pincode: String,
@@ -54,6 +55,10 @@ const restaurantSchema = new mongoose.Schema(
       offDays: [String],
       isOpen: { type: Boolean, default: true },
     },
+    // Per-day open/close hours, keyed by day name (Monday..Sunday) — the
+    // Restaurant Settings "Location & Hours" tab edits this directly. `timing`
+    // above stays as a simpler single open/close window used elsewhere.
+    weeklyHours: { type: mongoose.Schema.Types.Mixed, default: {} },
     availablePincodes: [String],
     deliverySettings: {
       deliveryRadius: { type: Number, default: 5 },

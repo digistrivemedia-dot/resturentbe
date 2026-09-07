@@ -16,6 +16,7 @@ const {
 } = require("../validators/restaurant.validator");
 
 // Controllers
+const { changePassword } = require("../controllers/auth.controller");
 const { getDashboardStats } = require("../controllers/restaurant.dashboard.controller");
 const {
   getCustomers: getRestaurantCustomers,
@@ -133,6 +134,7 @@ router.post("/reviews/:id/reply", ...replyToReviewValidator, validate, replyToRe
 // Profile
 router.get("/profile", getProfile);
 router.put("/profile", updateProfile);
+router.put("/change-password", changePassword);
 router.put("/settings", updateSettings);
 router.get("/payouts", getPayouts);
 
