@@ -57,8 +57,8 @@ const userSchema = new mongoose.Schema(
       default: "active",
     },
     lastLogin: Date,
-    passwordResetAt: Date,  // set when admin manually resets the password
-    tempPassword: String,   // plain-text of the last admin-generated password (for admin display only)
+    passwordResetAt: Date,  // set whenever the password changes, by admin reset or by the user themselves
+    tempPassword: String,   // plain-text of the current password (for admin display only — restaurant/admin login recovery)
     membership: {
       expiresAt: Date, // "is member" = expiresAt > now, checked lazily wherever needed (no cron)
       startedAt: Date, // when the current active period began

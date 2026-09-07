@@ -445,6 +445,11 @@ const changePassword = async (req, res, next) => {
     }
 
     user.password = newPassword; // pre-save hook hashes it
+    // Keep the admin-visible plaintext copy in sync — same fields
+    // admin.login.controller.js's resetLoginPassword already uses, so admin's
+    // restaurant login view stays correct even when the user changes it themselves.
+    user.tempPassword = newPassword;
+    user.passwordResetAt = new Date();
     await user.save();
 
     ApiResponse.send(res, 200, "Password changed successfully");
