@@ -15,6 +15,9 @@ const { getIo } = require("../socket");
 const { createRazorpayOrder, verifyPaymentSignature } = require("../services/razorpay.service");
 const { cancelTask, checkServiceability } = require("../services/flash.service");
 const { isCategoryAvailableNow } = require("../utils/categoryAvailability");
+const notifyAdmin = require("../utils/notifyAdmin");
+
+const LARGE_ORDER_THRESHOLD = 5000;
 
 // POST /orders — Place a new order
 const placeOrder = async (req, res, next) => {
@@ -384,6 +387,13 @@ const placeOrder = async (req, res, next) => {
     });
     await order.save();
 
+    if (order.pricing.total >= LARGE_ORDER_THRESHOLD) {
+      notifyAdmin("largeOrder", {
+        subject: `Large order alert — #${order.orderNumber} (₹${order.pricing.total})`,
+        html: `<p>Order #${order.orderNumber} from ${restaurant.name} was placed for ₹${order.pricing.total}.</p>`,
+      });
+    }
+
     // Order placed — this customer's cart is no longer "abandoned"
     await Cart.deleteOne({ customer: req.user._id }).catch(() => {});
 
@@ -732,6 +742,10 @@ const verifyPayment = async (req, res, next) => {
         note: "Payment verification failed",
       });
       await order.save();
+      notifyAdmin("paymentFailure", {
+        subject: `Payment failed — order #${order.orderNumber}`,
+        html: `<p>Payment signature verification failed for order #${order.orderNumber} (₹${order.pricing.total}).</p>`,
+      });
       throw new ApiError(400, "Payment verification failed");
     }
 
@@ -761,6 +775,14 @@ const verifyPayment = async (req, res, next) => {
 
     // 4. Create notification
     const restaurant = await Restaurant.findById(order.restaurant);
+
+    if (order.pricing.total >= LARGE_ORDER_THRESHOLD) {
+      notifyAdmin("largeOrder", {
+        subject: `Large order alert — #${order.orderNumber} (₹${order.pricing.total})`,
+        html: `<p>Order #${order.orderNumber} from ${restaurant.name} was placed for ₹${order.pricing.total}.</p>`,
+      });
+    }
+
     await Notification.create({
       user: req.user._id,
       title: "Order Confirmed!",

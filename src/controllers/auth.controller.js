@@ -419,6 +419,40 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
+// PUT /admin/change-password — Change the logged-in account's own password.
+// Role-agnostic (just needs `auth`), but currently only wired up for admin.
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      throw new ApiError(400, "Current and new password are required");
+    }
+    if (newPassword.length < 8) {
+      throw new ApiError(400, "New password must be at least 8 characters");
+    }
+
+    // req.user comes from the auth middleware with password excluded
+    // (select: false on the schema) — re-fetch it explicitly to compare.
+    const user = await User.findById(req.user._id).select("+password");
+    if (!user || !user.password) {
+      throw new ApiError(400, "This account has no password set (e.g. Google sign-in only)");
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      throw new ApiError(401, "Current password is incorrect");
+    }
+
+    user.password = newPassword; // pre-save hook hashes it
+    await user.save();
+
+    ApiResponse.send(res, 200, "Password changed successfully");
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -429,5 +463,6 @@ module.exports = {
   logout,
   getMe,
   updateProfile,
+  changePassword,
   impersonateExchange,
 };

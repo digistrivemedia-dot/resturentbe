@@ -1,8 +1,16 @@
 const Order = require("../models/Order");
 const User = require("../models/User");
 const Restaurant = require("../models/Restaurant");
+const PlatformSettings = require("../models/PlatformSettings");
 const ApiResponse = require("../utils/ApiResponse");
 const { ORDER_STATUS } = require("../utils/constants");
+
+// Commission is charged on food subtotal (not delivery fee/tax/tip) — mirrors
+// the same PlatformSettings key read by admin.analytics.controller.js.
+async function getCommissionPct() {
+  const setting = await PlatformSettings.findOne({ key: "commission" }).lean();
+  return setting?.value !== undefined ? Number(setting.value) : 18;
+}
 
 const getDashboardStats = async (req, res, next) => {
   try {
@@ -24,6 +32,7 @@ const getDashboardStats = async (req, res, next) => {
 
     // Run all queries in parallel
     const [
+      commissionPct,
       todayStats,
       weekStats,
       monthStats,
@@ -36,6 +45,7 @@ const getDashboardStats = async (req, res, next) => {
       totalMembersEverPurchased,
       activeMembers,
     ] = await Promise.all([
+      getCommissionPct(),
       // Today's GMV & commission
       Order.aggregate([
         {
@@ -48,6 +58,7 @@ const getDashboardStats = async (req, res, next) => {
           $group: {
             _id: null,
             gmv: { $sum: "$pricing.total" },
+            subtotal: { $sum: "$pricing.subtotal" },
             orders: { $sum: 1 },
           },
         },
@@ -100,13 +111,11 @@ const getDashboardStats = async (req, res, next) => {
     const week = weekStats[0] || {};
     const month = monthStats[0] || {};
 
-    // Estimate commission at 10% (can be refined later per-restaurant)
-    const commissionRate = 0.1;
-
     const stats = {
       todayGMV: today.gmv || 0,
       todayOrders: today.orders || 0,
-      todayCommission: Math.round((today.gmv || 0) * commissionRate),
+      todayCommission: Math.round((today.subtotal || 0) * (commissionPct / 100)),
+      commissionPct,
       weekGMV: week.gmv || 0,
       weekOrders: week.orders || 0,
       monthGMV: month.gmv || 0,

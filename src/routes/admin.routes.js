@@ -59,6 +59,7 @@ const {
   markAllNotificationsRead,
 } = require("../controllers/admin.notification.controller");
 const { getSettings, updateSettings } = require("../controllers/admin.settings.controller");
+const { changePassword } = require("../controllers/auth.controller");
 const { getLogs } = require("../controllers/admin.log.controller");
 const { getRestaurantLogins, addRestaurantLogin, resetLoginPassword, getImpersonateToken } = require("../controllers/admin.login.controller");
 const { getCategories, createCategory, updateCategory, deleteCategory } = require("../controllers/admin.category.controller");
@@ -135,6 +136,9 @@ router.put("/notifications/read-all", markAllNotificationsRead);
 // Platform Settings
 router.get("/settings", getSettings);
 router.put("/settings", ...updateSettingsValidator, validate, adminLog("updated", "settings"), updateSettings);
+
+// Account
+router.put("/change-password", changePassword);
 
 // Platform Categories (for home page food sections)
 router.get("/categories", getCategories);

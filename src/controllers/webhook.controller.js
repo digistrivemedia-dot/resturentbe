@@ -5,6 +5,7 @@ const Cart = require("../models/Cart");
 const User = require("../models/User");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
+const notifyAdmin = require("../utils/notifyAdmin");
 
 // Flash calls our webhook with "Authorization: Bearer <FLASH_WEBHOOK_TOKEN>" —
 // configured in the Flash dashboard's Configure Webhook section.
@@ -207,6 +208,10 @@ const handleRazorpayWebhook = async (req, res) => {
       if (!order || order.paymentStatus === "paid") return;
       order.paymentStatus = "failed";
       await order.save();
+      notifyAdmin("paymentFailure", {
+        subject: `Payment failed — order #${order.orderNumber}`,
+        html: `<p>Razorpay reported a failed payment for order #${order.orderNumber} (₹${order.pricing.total}).</p>`,
+      });
       console.log(`[Razorpay Webhook] Order ${order.orderNumber} payment failed`);
     }
   } catch (err) {
