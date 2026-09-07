@@ -18,7 +18,6 @@ const updateProfile = async (req, res, next) => {
       "name",
       "description",
       "cuisines",
-      "address",
       "timing",
       "costForTwo",
       "categories",
@@ -37,11 +36,16 @@ const updateProfile = async (req, res, next) => {
       }
     }
 
-    // Handle nested contact fields
-    if (req.body.phone !== undefined || req.body.email !== undefined) {
-      restaurant.contact = restaurant.contact || {};
-      if (req.body.phone !== undefined) restaurant.contact.phone = req.body.phone;
-      if (req.body.email !== undefined) restaurant.contact.email = req.body.email;
+    // address/contact are nested subdocuments — merge onto the existing values
+    // instead of overwriting, so a partial update (e.g. just phone) doesn't
+    // wipe fields the caller didn't send.
+    if (req.body.address !== undefined) {
+      const existing = restaurant.address?.toObject?.() || restaurant.address || {};
+      restaurant.address = { ...existing, ...req.body.address };
+    }
+    if (req.body.contact !== undefined) {
+      const existing = restaurant.contact?.toObject?.() || restaurant.contact || {};
+      restaurant.contact = { ...existing, ...req.body.contact };
     }
 
     await restaurant.save();

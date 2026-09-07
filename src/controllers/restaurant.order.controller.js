@@ -231,12 +231,25 @@ const updateOrderStatus = async (req, res, next) => {
     if (status === ORDER_STATUS.READY && order.orderType === "delivery") {
       order.deliveryTracking = order.deliveryTracking || {};
 
+      const missingProfileFields = [];
+      if (!req.restaurant.contact?.phone) missingProfileFields.push("contact phone number");
+      if (!req.restaurant.address?.fullAddress) missingProfileFields.push("address");
+
       if (order.paymentStatus !== "paid") {
         // Flash's 3PL service rejects unpaid (COD) orders outright — no point calling the API
         console.warn(`[Flash] Skipped dispatch for ${order.orderNumber} — order is COD/unpaid, Flash requires online payment`);
         order.deliveryTracking.flash = {
           status: "CANCELLED",
           dispatchFailedReason: "Cash on Delivery orders aren't supported by Flash — arrange delivery manually",
+        };
+      } else if (missingProfileFields.length > 0) {
+        // Flash's API hard-rejects the request when these are blank (confirmed via
+        // its own validation error), so check before calling rather than after.
+        const reason = `Restaurant profile is missing ${missingProfileFields.join(" and ")} — update it under Restaurant Settings > Profile, then retry`;
+        console.warn(`[Flash] Skipped dispatch for ${order.orderNumber} — ${reason}`);
+        order.deliveryTracking.flash = {
+          status: "CANCELLED",
+          dispatchFailedReason: reason,
         };
       } else {
         console.log(`[Flash] Dispatching rider for ${order.orderNumber} (restaurant: ${req.restaurant.name})`);
@@ -252,7 +265,14 @@ const updateOrderStatus = async (req, res, next) => {
             };
             console.log(`[Flash] Task created for ${order.orderNumber}: ${order.deliveryTracking.flash.taskId}`);
           } else {
-            const reason = flashResult.message || "Rider not available";
+            // Validation failures come back as msg: { field: "error text" } rather
+            // than a single message string — surface those too, not just a generic
+            // fallback that would otherwise mislabel a bad payload as "no rider".
+            const reason = flashResult.message
+              || (flashResult.msg && typeof flashResult.msg === "object"
+                    ? Object.values(flashResult.msg).join("; ")
+                    : flashResult.msg)
+              || "Rider not available";
             order.deliveryTracking.flash = {
               status: flashResult.Status_code || "CANCELLED",
               dispatchFailedReason: reason,
