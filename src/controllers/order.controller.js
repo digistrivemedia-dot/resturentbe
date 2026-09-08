@@ -13,7 +13,7 @@ const ApiResponse = require("../utils/ApiResponse");
 const { ORDER_STATUS, PAYMENT_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
 const { createRazorpayOrder, verifyPaymentSignature } = require("../services/razorpay.service");
-const { cancelTask, checkServiceability } = require("../services/flash.service");
+const { cancelTask, checkServiceability, geocodeAddress } = require("../services/flash.service");
 const { isCategoryAvailableNow } = require("../utils/categoryAvailability");
 const notifyAdmin = require("../utils/notifyAdmin");
 
@@ -144,6 +144,18 @@ const placeOrder = async (req, res, next) => {
     const { deliverySettings } = restaurant;
     let deliveryFee = 0;
     if (isDeliveryOrder) {
+      // Checkout doesn't require pinning a map location on saved addresses, so
+      // this can arrive with no lat/lng — try to resolve them silently from
+      // the address text so delivery/dispatch isn't permanently blocked later.
+      // Best-effort: if it fails, the order still proceeds as before.
+      if (deliveryAddress && (typeof deliveryAddress.lat !== "number" || typeof deliveryAddress.lng !== "number") && deliveryAddress.fullAddress) {
+        const geocoded = await geocodeAddress(deliveryAddress.fullAddress, deliveryAddress.pincode);
+        if (geocoded) {
+          deliveryAddress.lat = geocoded.lat;
+          deliveryAddress.lng = geocoded.lng;
+        }
+      }
+
       const pickupLat = restaurant.address?.lat;
       const pickupLng = restaurant.address?.lng;
       const dropLat = deliveryAddress?.lat;
@@ -315,6 +327,10 @@ const placeOrder = async (req, res, next) => {
 
     // 7. Create order
     const isOnlinePayment = paymentMethod === "online";
+    // Dev/test-only shortcut — simulates a successful Razorpay payment so local
+    // testing (e.g. checking Flash dispatch on mark-Ready) doesn't require an
+    // actual checkout each time. Never available in production.
+    const isTestPaid = paymentMethod === "test_paid" && process.env.NODE_ENV !== "production";
     const order = new Order({
       customer: req.user._id,
       restaurant: restaurant._id,
@@ -339,8 +355,8 @@ const placeOrder = async (req, res, next) => {
       restaurantAddress: restaurant.address,
       orderType: normalizedOrderType,
       scheduledFor: scheduledDate || null,
-      paymentMethod: paymentMethod || "cod",
-      paymentStatus: PAYMENT_STATUS.PENDING,
+      paymentMethod: isTestPaid ? "online" : (paymentMethod || "cod"),
+      paymentStatus: isTestPaid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.PENDING,
       estimatedDeliveryTime: deliverySettings?.avgDeliveryTime || 30,
       status: isOnlinePayment ? ORDER_STATUS.PENDING_PAYMENT : ORDER_STATUS.PLACED,
       statusHistory: [

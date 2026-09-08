@@ -232,8 +232,21 @@ const updateOrderStatus = async (req, res, next) => {
       order.deliveryTracking = order.deliveryTracking || {};
 
       const missingProfileFields = [];
-      if (!req.restaurant.contact?.phone) missingProfileFields.push("contact phone number");
-      if (!req.restaurant.address?.fullAddress) missingProfileFields.push("address");
+      if (!req.restaurant.contact?.phone) missingProfileFields.push("the restaurant's contact phone number (Settings > Location & Hours)");
+      if (!req.restaurant.address?.fullAddress) missingProfileFields.push("the restaurant's address (Settings > Location & Hours)");
+      // drop_details.contact_number comes from the customer's own account phone —
+      // accounts created via Google/OTP sign-in never require one, so this is a
+      // real, expected gap for some customers, not a code bug (confirmed against
+      // Flash's own validation error).
+      if (!order.customer?.phone) missingProfileFields.push("the customer's phone number on their account");
+      // Checkout doesn't require a pinned map location on saved addresses (by
+      // design — see checkout page), so an order can reach here with a delivery
+      // address that has no lat/lng. Flash's drop_details.latitude/longitude
+      // would then be undefined and get rejected the same way as the other
+      // missing-field cases above.
+      if (typeof order.deliveryAddress?.lat !== "number" || typeof order.deliveryAddress?.lng !== "number") {
+        missingProfileFields.push("a map location on the customer's delivery address");
+      }
 
       if (order.paymentStatus !== "paid") {
         // Flash's 3PL service rejects unpaid (COD) orders outright — no point calling the API
@@ -245,7 +258,7 @@ const updateOrderStatus = async (req, res, next) => {
       } else if (missingProfileFields.length > 0) {
         // Flash's API hard-rejects the request when these are blank (confirmed via
         // its own validation error), so check before calling rather than after.
-        const reason = `Restaurant profile is missing ${missingProfileFields.join(" and ")} — update it under Settings > Location & Hours, then retry`;
+        const reason = `Missing ${missingProfileFields.join(" and ")} — dispatch can't be requested until this is set, then retry`;
         console.warn(`[Flash] Skipped dispatch for ${order.orderNumber} — ${reason}`);
         order.deliveryTracking.flash = {
           status: "CANCELLED",

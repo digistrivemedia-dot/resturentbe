@@ -4,7 +4,34 @@ const ApiResponse = require("../utils/ApiResponse");
 // GET /customer/cart
 const getCart = async (req, res, next) => {
   try {
-    const cart = await Cart.findOne({ customer: req.user._id }).lean();
+    const cart = await Cart.findOne({ customer: req.user._id })
+      .populate("restaurant", "name slug address deliverySettings status")
+      .lean();
+
+    if (cart?.restaurant) {
+      // Reshape to the exact flattened object every addItem() call site builds
+      // client-side (MenuItemCard/AddonSelector/HomeFoodCard/favorites) —
+      // otherwise a cart hydrated from the server after a reload would carry
+      // restaurant.deliverySettings.deliveryFee instead of restaurant.deliveryFee,
+      // silently breaking delivery-fee math instead of failing loudly.
+      const r = cart.restaurant;
+      if (r.status && r.status !== "active") {
+        // Restaurant went inactive/suspended since the cart was built — same
+        // as a deleted restaurant, this cart can no longer be checked out.
+        cart.restaurant = null;
+      } else {
+        cart.restaurant = {
+          _id: r._id,
+          name: r.name,
+          slug: r.slug,
+          address: r.address,
+          deliveryFee: r.deliverySettings?.deliveryFee || 0,
+          freeDeliveryAbove: r.deliverySettings?.freeDeliveryAbove,
+          minOrderAmount: r.deliverySettings?.minOrderAmount || 0,
+        };
+      }
+    }
+
     return ApiResponse.send(res, 200, "Cart fetched", { cart: cart || null });
   } catch (error) {
     next(error);

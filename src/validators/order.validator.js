@@ -31,7 +31,9 @@ const placeOrderValidator = [
     .withMessage("Scheduled time must be a valid date"),
   body("paymentMethod")
     .optional()
-    .isIn(["online", "cod"])
+    // "test_paid" is a dev/test-only shortcut (see order.controller.js) —
+    // only accepted outside production, same gate the controller applies.
+    .isIn(process.env.NODE_ENV !== "production" ? ["online", "cod", "test_paid"] : ["online", "cod"])
     .withMessage("Invalid payment method"),
 ];
 

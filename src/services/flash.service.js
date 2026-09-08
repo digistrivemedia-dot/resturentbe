@@ -29,6 +29,49 @@ async function reverseGeocodeCity(lat, lng) {
   }
 }
 
+async function nominatimSearch(query) {
+  const res = await axios.get("https://nominatim.openstreetmap.org/search", {
+    params: { q: query, format: "json", limit: 1, countrycodes: "in" },
+    headers: { "User-Agent": "SriIshaCafe/1.0 (delivery-dispatch)" },
+    timeout: 5000,
+  });
+  const result = res.data?.[0];
+  if (!result) return null;
+  const lat = parseFloat(result.lat);
+  const lng = parseFloat(result.lon);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  return { lat, lng };
+}
+
+// Forward geocode — resolves lat/lng from free-text address, used as a silent
+// fallback at order-placement time when a customer's saved delivery address
+// has no coordinates (checkout intentionally doesn't require pinning a map
+// location before ordering — see checkout page). Best-effort only: if it
+// can't resolve, the order still proceeds and Flash dispatch fails later with
+// a clear reason instead, same as any other missing-field case.
+//
+// Two-tier: full address text first (best precision when it resolves), then
+// pincode alone as a fallback — confirmed via testing that informal Indian
+// addresses with floor numbers/landmarks often return zero results from the
+// full text, while "<pincode>, India" reliably resolves to a usable
+// neighbourhood-level point. Good enough for dispatch: the rider still uses
+// the real address text + customer phone number to find the exact door.
+async function geocodeAddress(fullAddress, pincode) {
+  try {
+    if (fullAddress) {
+      const full = await nominatimSearch([fullAddress, pincode, "India"].filter(Boolean).join(", "));
+      if (full) return full;
+    }
+    if (pincode) {
+      const byPincode = await nominatimSearch(`${pincode}, India`);
+      if (byPincode) return byPincode;
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // POST /getServiceability
 // Returns { riderServiceAble, locationServiceAble, payouts: { total, price, tax } }
 async function checkServiceability(pickupLat, pickupLng, dropLat, dropLng) {
@@ -114,4 +157,4 @@ async function trackTask(taskId) {
   return res.data;
 }
 
-module.exports = { checkServiceability, createTask, cancelTask, trackTask };
+module.exports = { checkServiceability, createTask, cancelTask, trackTask, geocodeAddress };

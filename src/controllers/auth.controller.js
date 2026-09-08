@@ -155,21 +155,26 @@ const sendOtp = async (req, res, next) => {
       expiresAt: isReviewAccount ? Infinity : Date.now() + 5 * 60 * 1000,
     });
 
-    // Send email
-    await sendEmail({
-      to: email,
-      subject: "Your CafeSriisha Login OTP",
-      html: `
-        <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
-          <h2 style="color: #E23744;">CafeSriisha</h2>
-          <p>Your OTP for login is:</p>
-          <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333; padding: 16px 0;">
-            ${otp}
+    // The review account's whole purpose is not depending on real email
+    // delivery (reviewers/testers use the fixed OTP directly) — real
+    // customer accounts still need an actual email sent, so their failures
+    // aren't swallowed.
+    if (!isReviewAccount) {
+      await sendEmail({
+        to: email,
+        subject: "Your CafeSriisha Login OTP",
+        html: `
+          <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
+            <h2 style="color: #E23744;">CafeSriisha</h2>
+            <p>Your OTP for login is:</p>
+            <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333; padding: 16px 0;">
+              ${otp}
+            </div>
+            <p style="color: #888; font-size: 14px;">This OTP is valid for 5 minutes. Do not share it with anyone.</p>
           </div>
-          <p style="color: #888; font-size: 14px;">This OTP is valid for 5 minutes. Do not share it with anyone.</p>
-        </div>
-      `,
-    });
+        `,
+      });
+    }
 
     ApiResponse.send(res, 200, "OTP sent to your email", { email });
   } catch (error) {
@@ -408,7 +413,10 @@ const updateProfile = async (req, res, next) => {
 
     if (name) user.name = name;
     if (email) user.email = email;
-    if (phone) user.phone = phone;
+    if (phone && phone !== user.phone) {
+      user.phone = phone;
+      user.isPhoneVerified = false; // stale "verified" flag would be misleading on a new, unverified number
+    }
     if (avatar) user.avatar = avatar;
 
     await user.save();
