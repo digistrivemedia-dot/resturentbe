@@ -19,6 +19,12 @@ const notifyAdmin = require("../utils/notifyAdmin");
 
 const LARGE_ORDER_THRESHOLD = 5000;
 
+// Statuses where the customer can cancel outright — no kitchen/rider
+// commitment yet. Anything past this needs the restaurant's sign-off via
+// requestCancelOrder below, since food may already be cooking or a rider
+// already assigned.
+const SELF_CANCELLABLE_STATUSES = [ORDER_STATUS.PENDING_PAYMENT, ORDER_STATUS.PLACED, ORDER_STATUS.CONFIRMED];
+
 // POST /orders — Place a new order
 const placeOrder = async (req, res, next) => {
   try {
@@ -553,9 +559,8 @@ const cancelOrder = async (req, res, next) => {
     }
 
     // Only allow cancellation for placed or confirmed orders
-    const cancellableStatuses = [ORDER_STATUS.PENDING_PAYMENT, ORDER_STATUS.PLACED, ORDER_STATUS.CONFIRMED];
-    if (!cancellableStatuses.includes(order.status)) {
-      throw new ApiError(400, "Order cannot be cancelled at this stage");
+    if (!SELF_CANCELLABLE_STATUSES.includes(order.status)) {
+      throw new ApiError(400, "This order is already being prepared — use 'Request Cancellation' instead");
     }
 
     // An order can be cancelled while still pending_payment (customer closed
@@ -594,6 +599,55 @@ const cancelOrder = async (req, res, next) => {
     });
 
     ApiResponse.send(res, 200, "Order cancelled", { order });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /orders/:id/request-cancel — Customer asks to cancel an order that's
+// past the self-serve window (see SELF_CANCELLABLE_STATUSES). Doesn't cancel
+// anything itself — flags it for the restaurant to approve (they then use
+// their own Cancel Order action) or deny with a reason.
+const requestCancelOrder = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    const order = await Order.findOne({
+      _id: req.params.id,
+      customer: req.user._id,
+    });
+
+    if (!order) {
+      throw new ApiError(404, "Order not found");
+    }
+
+    if (SELF_CANCELLABLE_STATUSES.includes(order.status)) {
+      throw new ApiError(400, "This order can still be cancelled directly — no need to request it");
+    }
+    if ([ORDER_STATUS.DELIVERED, ORDER_STATUS.CANCELLED].includes(order.status)) {
+      throw new ApiError(400, "This order can no longer be cancelled");
+    }
+    if (order.cancellationRequest?.status === "pending") {
+      throw new ApiError(400, "A cancellation request is already pending for this order");
+    }
+    if (order.cancellationRequest?.status === "denied") {
+      throw new ApiError(400, "The restaurant already declined a cancellation request for this order");
+    }
+
+    order.cancellationRequest = {
+      status: "pending",
+      reason: reason || "",
+      requestedAt: new Date(),
+    };
+    await order.save();
+
+    try {
+      const io = getIo();
+      if (io) {
+        io.to(`restaurant:${order.restaurant}`).emit("order_updated", { order });
+      }
+    } catch (e) {}
+
+    ApiResponse.send(res, 200, "Cancellation request sent to the restaurant", { order });
   } catch (error) {
     next(error);
   }
@@ -835,5 +889,6 @@ module.exports = {
   getMyOrders,
   getOrderById,
   cancelOrder,
+  requestCancelOrder,
   rateOrder,
 };

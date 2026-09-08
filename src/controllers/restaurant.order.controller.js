@@ -1,16 +1,21 @@
 const Order = require("../models/Order");
+const Notification = require("../models/Notification");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
-const { createTask } = require("../services/flash.service");
+const { createTask, cancelTask } = require("../services/flash.service");
 
 function emitOrderUpdate(restaurantId, order) {
   try {
     const io = getIo();
     if (io) {
+      // order.customer may be a populated User doc (updateOrderStatus, cancel,
+      // deny-cancel-request) or a raw ObjectId (accept, reject) — the room name
+      // must always be the plain hex id, or the emit silently reaches no one.
+      const customerId = order.customer?._id || order.customer;
       io.to(`restaurant:${restaurantId}`).emit("order_updated", { order });
-      io.to(`customer:${order.customer}`).emit("order_status_updated", { order });
+      io.to(`customer:${customerId}`).emit("order_status_updated", { order });
     }
   } catch (e) {}
 }
@@ -178,6 +183,131 @@ const rejectOrder = async (req, res, next) => {
   }
 };
 
+// PUT /restaurant/orders/:id/cancel — Restaurant cancels an already-accepted
+// order (proactively, or approving a customer's cancellation request). If a
+// Flash rider task exists, it's only cancelled — and the order only marked
+// cancelled — once Flash actually confirms the cancellation; a failed/errored
+// Flash call leaves the order untouched so a rider already en route isn't
+// silently orphaned.
+const cancelOrderByRestaurant = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+
+    const order = await Order.findOne({
+      _id: req.params.id,
+      restaurant: req.restaurant._id,
+    }).populate("customer", "name");
+
+    if (!order) {
+      throw new ApiError(404, "Order not found");
+    }
+
+    // PLACED orders use reject (not yet accepted); DELIVERED/CANCELLED are terminal.
+    if ([ORDER_STATUS.PLACED, ORDER_STATUS.DELIVERED, ORDER_STATUS.CANCELLED].includes(order.status)) {
+      throw new ApiError(400, `Order cannot be cancelled from "${order.status}" status`);
+    }
+
+    const flashTaskId = order.deliveryTracking?.flash?.taskId;
+    if (flashTaskId) {
+      let flashResult;
+      try {
+        flashResult = await cancelTask(flashTaskId);
+      } catch (flashErr) {
+        throw new ApiError(502, `Couldn't reach Flash to cancel the rider: ${flashErr.message}. Order was not cancelled — try again.`);
+      }
+      // Flash's cancelTask is inconsistent with its own createTask: success is a
+      // real boolean `true`, but failure comes back as the STRING "0" (confirmed
+      // live) — a plain `if (!flashResult.status)` check would treat "0" as
+      // truthy and silently cancel the order anyway. Must check `=== true`.
+      // The failure reason also lands in `msg`, not `message` (also confirmed live).
+      if (flashResult?.status !== true) {
+        const rawReason = flashResult?.msg || flashResult?.message;
+        const reasonMsg = typeof rawReason === "object" ? Object.values(rawReason).join("; ") : (rawReason || "Flash declined to cancel the task");
+        throw new ApiError(502, `Flash couldn't cancel the rider (${reasonMsg}). Order was not cancelled.`);
+      }
+      order.deliveryTracking.flash.status = flashResult.status_code || "CANCELLED";
+    }
+
+    // Approving a customer's pending request (banner "Cancel Order") sends no
+    // explicit reason — fall back to the customer's own stated reason so it
+    // isn't lost behind a generic message on the customer-facing cancelled screen.
+    const isApprovingRequest = order.cancellationRequest?.status === "pending";
+    const customerReason = order.cancellationRequest?.reason;
+
+    order.status = ORDER_STATUS.CANCELLED;
+    order.cancellation = {
+      cancelledBy: "restaurant",
+      reason: reason || (isApprovingRequest
+        ? (customerReason ? `Cancelled by restaurant — customer requested: "${customerReason}"` : "Cancelled by restaurant (approved customer's cancellation request)")
+        : "Cancelled by restaurant"),
+    };
+    if (isApprovingRequest) {
+      order.cancellationRequest.status = "approved";
+      order.cancellationRequest.respondedAt = new Date();
+    }
+    order.statusHistory.push({
+      status: ORDER_STATUS.CANCELLED,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+      note: order.cancellation.reason,
+    });
+
+    await order.save();
+
+    await Notification.create({
+      user: order.customer._id,
+      title: "Order Cancelled",
+      message: `Your order #${order.orderNumber} was cancelled by the restaurant.`,
+      type: "order",
+      data: { orderId: order._id },
+    });
+
+    emitOrderUpdate(req.restaurant._id, order);
+    return ApiResponse.send(res, 200, "Order cancelled", { order });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// PUT /restaurant/orders/:id/deny-cancel-request — Restaurant declines a
+// customer's cancellation request, with a reason shown back to the customer.
+// Final — no re-request on the same order (product decision).
+const denyCancelRequest = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+
+    const order = await Order.findOne({
+      _id: req.params.id,
+      restaurant: req.restaurant._id,
+    }).populate("customer", "name");
+
+    if (!order) {
+      throw new ApiError(404, "Order not found");
+    }
+    if (order.cancellationRequest?.status !== "pending") {
+      throw new ApiError(400, "There's no pending cancellation request on this order");
+    }
+
+    order.cancellationRequest.status = "denied";
+    order.cancellationRequest.restaurantResponse = reason.trim();
+    order.cancellationRequest.respondedAt = new Date();
+    await order.save();
+
+    await Notification.create({
+      user: order.customer._id,
+      title: "Cancellation Request Declined",
+      message: `The restaurant declined to cancel order #${order.orderNumber}: ${reason.trim()}`,
+      type: "order",
+      data: { orderId: order._id },
+    });
+
+    emitOrderUpdate(req.restaurant._id, order);
+    return ApiResponse.send(res, 200, "Cancellation request declined", { order });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const updateOrderStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
@@ -315,5 +445,7 @@ module.exports = {
   getOrderById,
   acceptOrder,
   rejectOrder,
+  cancelOrderByRestaurant,
+  denyCancelRequest,
   updateOrderStatus,
 };

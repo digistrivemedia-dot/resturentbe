@@ -126,6 +126,21 @@ const orderSchema = new mongoose.Schema(
         enum: ["pending", "processed"],
       },
     },
+    // A customer-initiated cancel once the order is past the self-serve window
+    // (see order.controller.js cancelOrder) — the restaurant decides, shown as
+    // a card under the order on their Orders page. "denied" is final — no
+    // re-request on the same order, per product decision.
+    cancellationRequest: {
+      status: {
+        type: String,
+        enum: ["none", "pending", "approved", "denied"],
+        default: "none",
+      },
+      reason: String, // why the customer wants to cancel
+      requestedAt: Date,
+      restaurantResponse: String, // why the restaurant said no
+      respondedAt: Date,
+    },
     deliveryTracking: {
       deliveryPartner: {
         type: mongoose.Schema.Types.ObjectId,

@@ -13,6 +13,8 @@ const {
   updateOrderStatusValidator,
   createCouponValidator,
   replyToReviewValidator,
+  cancelOrderByRestaurantValidator,
+  denyCancelRequestValidator,
 } = require("../validators/restaurant.validator");
 
 // Controllers
@@ -27,6 +29,8 @@ const {
   getOrderById,
   acceptOrder,
   rejectOrder,
+  cancelOrderByRestaurant,
+  denyCancelRequest,
   updateOrderStatus,
 } = require("../controllers/restaurant.order.controller");
 const {
@@ -95,6 +99,8 @@ router.get("/orders", getOrders);
 router.get("/orders/:id", getOrderById);
 router.put("/orders/:id/accept", acceptOrder);
 router.put("/orders/:id/reject", rejectOrder);
+router.put("/orders/:id/cancel", ...cancelOrderByRestaurantValidator, validate, cancelOrderByRestaurant);
+router.put("/orders/:id/deny-cancel-request", ...denyCancelRequestValidator, validate, denyCancelRequest);
 router.put("/orders/:id/status", ...updateOrderStatusValidator, validate, updateOrderStatus);
 
 // Menu

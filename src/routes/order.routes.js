@@ -14,6 +14,7 @@ const {
   getMyOrders,
   getOrderById,
   cancelOrder,
+  requestCancelOrder,
   rateOrder,
 } = require("../controllers/order.controller");
 
@@ -25,6 +26,7 @@ router.post("/verify-payment", ...verifyPaymentValidator, validate, verifyPaymen
 router.get("/", getMyOrders);
 router.get("/:id", getOrderById);
 router.post("/:id/cancel", ...cancelOrderValidator, validate, cancelOrder);
+router.post("/:id/request-cancel", ...cancelOrderValidator, validate, requestCancelOrder);
 router.post("/:id/rate", ...rateOrderValidator, validate, rateOrder);
 
 module.exports = router;

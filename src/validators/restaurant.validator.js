@@ -64,9 +64,32 @@ const replyToReviewValidator = [
     .trim(),
 ];
 
+const cancelOrderByRestaurantValidator = [
+  body("reason")
+    .optional()
+    .isString()
+    .withMessage("Reason must be text")
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("Reason must be under 500 characters"),
+];
+
+const denyCancelRequestValidator = [
+  body("reason")
+    .notEmpty()
+    .withMessage("A reason is required so the customer knows why")
+    .isString()
+    .withMessage("Reason must be text")
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("Reason must be under 500 characters"),
+];
+
 module.exports = {
   addMenuItemValidator,
   updateOrderStatusValidator,
   createCouponValidator,
   replyToReviewValidator,
+  cancelOrderByRestaurantValidator,
+  denyCancelRequestValidator,
 };
