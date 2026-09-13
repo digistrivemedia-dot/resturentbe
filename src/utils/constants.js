@@ -1,9 +1,3 @@
-const USER_ROLES = {
-  CUSTOMER: "customer",
-  RESTAURANT_OWNER: "restaurant_owner",
-  SUPER_ADMIN: "super_admin",
-};
-
 const ORDER_STATUS = {
   PENDING_PAYMENT: "pending_payment",
   PLACED: "placed",
@@ -23,17 +17,9 @@ const PAYMENT_STATUS = {
   REFUNDED: "refunded",
 };
 
-const RESTAURANT_STATUS = {
-  PENDING: "pending",
-  ACTIVE: "active",
-  SUSPENDED: "suspended",
-  CLOSED: "closed",
-};
-
 const COUPON_TYPE = {
   PERCENTAGE: "percentage",
   FLAT: "flat",
-  FREE_DELIVERY: "free_delivery",
 };
 
 const COUPON_SCOPE = {
@@ -42,10 +28,8 @@ const COUPON_SCOPE = {
 };
 
 module.exports = {
-  USER_ROLES,
   ORDER_STATUS,
   PAYMENT_STATUS,
-  RESTAURANT_STATUS,
   COUPON_TYPE,
   COUPON_SCOPE,
 };

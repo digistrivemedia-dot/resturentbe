@@ -6,6 +6,10 @@ const User = require("../models/User");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { categoryAvailabilityInfo } = require("../utils/categoryAvailability");
+const { getDiscoveryRadiusMeters } = require("../utils/discoverySettings");
+
+// Internal/financial fields that must never reach public customer-facing responses
+const PUBLIC_EXCLUDE_FIELDS = "-bankDetails -taxSettings -commission -owner -managers -onboardedBy";
 
 // GET /restaurants — List restaurants with filters, sort, pagination
 const getRestaurants = async (req, res, next) => {
@@ -95,20 +99,67 @@ const getRestaurants = async (req, res, next) => {
       case "newest":
         sortOption = { createdAt: -1 };
         break;
+      case "distance":
+        sortOption = { distanceMeters: 1 };
+        break;
       default:
         sortOption = { isFeatured: -1, "rating.average": -1 };
     }
 
     const skip = (Number(page) - 1) * Number(limit);
 
-    const [restaurants, total] = await Promise.all([
-      Restaurant.find(filter)
-        .sort(sortOption)
-        .skip(skip)
-        .limit(Number(limit))
-        .lean(),
-      Restaurant.countDocuments(filter),
-    ]);
+    // $geoNear can't be combined with $text search in the same pipeline, so the
+    // rarely-used `search` param keeps the plain (non-geo) path below.
+    const hasLocation = lat && lng && !search;
+
+    let restaurants;
+    let total;
+
+    if (hasLocation) {
+      const latitude = parseFloat(lat);
+      const longitude = parseFloat(lng);
+      const geoSort = sort === "relevance" || sort === "distance" ? { distanceMeters: 1 } : sortOption;
+      const { radiusMeters } = await getDiscoveryRadiusMeters();
+
+      const [result] = await Restaurant.aggregate([
+        {
+          $geoNear: {
+            near: { type: "Point", coordinates: [longitude, latitude] },
+            distanceField: "distanceMeters",
+            spherical: true,
+            query: filter,
+          },
+        },
+        { $match: { $or: [{ distanceMeters: { $lte: radiusMeters } }, { alwaysVisible: true }] } },
+        { $unset: ["bankDetails", "taxSettings", "commission", "owner", "managers", "onboardedBy"] },
+        {
+          $facet: {
+            data: [
+              { $sort: geoSort },
+              { $skip: skip },
+              { $limit: Number(limit) },
+            ],
+            totalCount: [{ $count: "count" }],
+          },
+        },
+      ]);
+
+      restaurants = result.data.map((r) => ({
+        ...r,
+        distanceKm: Math.round((r.distanceMeters / 1000) * 10) / 10,
+      }));
+      total = result.totalCount[0]?.count || 0;
+    } else {
+      [restaurants, total] = await Promise.all([
+        Restaurant.find(filter)
+          .select(PUBLIC_EXCLUDE_FIELDS)
+          .sort(sortOption)
+          .skip(skip)
+          .limit(Number(limit))
+          .lean(),
+        Restaurant.countDocuments(filter),
+      ]);
+    }
 
     ApiResponse.send(res, 200, "Restaurants fetched", {
       restaurants,
@@ -129,7 +180,9 @@ const getRestaurantBySlug = async (req, res, next) => {
   try {
     const { slug } = req.params;
 
-    const restaurant = await Restaurant.findOne({ slug, status: "active" }).lean();
+    const restaurant = await Restaurant.findOne({ slug, status: "active" })
+      .select(PUBLIC_EXCLUDE_FIELDS)
+      .lean();
     if (!restaurant) {
       throw new ApiError(404, "Restaurant not found");
     }
@@ -314,6 +367,7 @@ const search = async (req, res, next) => {
           { description: regex },
         ],
       })
+        .select(PUBLIC_EXCLUDE_FIELDS)
         .sort(sortOption)
         .skip(skip)
         .limit(Number(limit))

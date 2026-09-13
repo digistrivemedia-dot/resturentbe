@@ -87,9 +87,10 @@ const validateCouponValidator = [
 const addAddressValidator = [
   body("label")
     .notEmpty()
-    .withMessage("Label is required (e.g. Home, Work)")
-    .isIn(["home", "work", "other"])
-    .withMessage("Label must be home, work, or other"),
+    .withMessage("Label is required (e.g. Home, Work, or a custom name)")
+    .trim()
+    .isLength({ max: 30 })
+    .withMessage("Label must be under 30 characters"),
   body("fullAddress")
     .notEmpty()
     .withMessage("Full address is required")
@@ -105,8 +106,9 @@ const addAddressValidator = [
 const updateAddressValidator = [
   body("label")
     .optional()
-    .isIn(["home", "work", "other"])
-    .withMessage("Label must be home, work, or other"),
+    .trim()
+    .isLength({ max: 30 })
+    .withMessage("Label must be under 30 characters"),
   body("fullAddress")
     .optional()
     .isLength({ min: 10 })

@@ -339,6 +339,27 @@ const updateOrderStatus = async (req, res, next) => {
       );
     }
 
+    // Atomically claim this transition before doing anything else. Without
+    // this, two near-simultaneous requests for the same order (e.g. an
+    // accidental double-click on "Mark Ready" while Flash's createTask call
+    // — up to 15s — is still pending) both read the same pre-update status,
+    // both pass the check above, and both proceed to dispatch a second Flash
+    // rider for the same order; whichever request saves last silently
+    // overwrites the other's taskId, so the app never even records that a
+    // duplicate rider went out (this is a real incident, not theoretical —
+    // confirmed against a live case of two riders showing up for one order).
+    // MongoDB only lets one concurrent updateOne match a filter tied to the
+    // status we just read — the loser gets a clean 409 instead of a second
+    // dispatch.
+    const previousStatus = order.status;
+    const claim = await Order.updateOne(
+      { _id: order._id, status: previousStatus },
+      { $set: { status } }
+    );
+    if (claim.matchedCount === 0) {
+      throw new ApiError(409, "This order was just updated elsewhere — please refresh and try again");
+    }
+
     order.status = status;
     order.statusHistory.push({
       status,

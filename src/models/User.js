@@ -2,9 +2,13 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
 const addressSchema = new mongoose.Schema({
+  // "home"/"work"/"other" remain the quick-select defaults in the UI, but this
+  // is free text so a customer can name an address anything (e.g. "Friend's
+  // House") — otherwise two "Other" addresses are indistinguishable at checkout.
   label: {
     type: String,
-    enum: ["home", "work", "other"],
+    trim: true,
+    maxlength: 30,
     default: "home",
   },
   fullAddress: String,

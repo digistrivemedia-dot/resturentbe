@@ -87,6 +87,8 @@ const restaurantSchema = new mongoose.Schema(
     commission: { type: Number, default: 10 },
     isVerified: { type: Boolean, default: false },
     isFeatured: { type: Boolean, default: false },
+    // Bypasses the customer discovery radius — restaurant stays visible at any distance
+    alwaysVisible: { type: Boolean, default: false },
     costForTwo: { type: Number, default: 300 },
     offers: [
       {
@@ -143,6 +145,7 @@ restaurantSchema.index({ status: 1 });
 restaurantSchema.index({ cuisines: 1 });
 restaurantSchema.index({ "address.city": 1 });
 restaurantSchema.index({ isFeatured: 1 });
+restaurantSchema.index({ alwaysVisible: 1 });
 restaurantSchema.index({ "rating.average": -1 });
 restaurantSchema.index({ name: "text", cuisines: "text", description: "text" });
 

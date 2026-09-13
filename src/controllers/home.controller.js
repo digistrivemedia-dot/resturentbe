@@ -5,6 +5,7 @@ const PlatformCategory = require("../models/PlatformCategory");
 const Coupon = require("../models/Coupon");
 const ApiResponse = require("../utils/ApiResponse");
 const { isCategoryAvailableNow } = require("../utils/categoryAvailability");
+const { getDiscoveryRadiusMeters } = require("../utils/discoverySettings");
 
 // GET /home/feed?lat=X&lng=Y&category=Biryani
 const getHomeFeed = async (req, res, next) => {
@@ -19,35 +20,41 @@ const getHomeFeed = async (req, res, next) => {
     const hasLocation = lat && lng;
     let restaurants = [];
     let items = [];
+    const { radiusKm, radiusMeters } = await getDiscoveryRadiusMeters();
 
     if (hasLocation) {
       const latitude = parseFloat(lat);
       const longitude = parseFloat(lng);
 
-      // Try geospatial query; fall back to all active if index missing or no geo-tagged restaurants
+      // Strict radius: only restaurants within radiusMeters are returned, unless
+      // a restaurant is flagged alwaysVisible (admin override) — no fallback to
+      // "all restaurants" when nothing is nearby.
       try {
-        restaurants = await Restaurant.find({
-          status: "active",
-          location: {
-            $nearSphere: {
-              $geometry: { type: "Point", coordinates: [longitude, latitude] },
-              $maxDistance: 8000,
+        const geoResults = await Restaurant.aggregate([
+          {
+            $geoNear: {
+              near: { type: "Point", coordinates: [longitude, latitude] },
+              distanceField: "distanceMeters",
+              spherical: true,
+              query: { status: "active" },
             },
           },
-        })
-          .select("name slug logo coverImage cuisines rating timing deliverySettings address location")
-          .limit(20)
-          .lean();
+          { $match: { $or: [{ distanceMeters: { $lte: radiusMeters } }, { alwaysVisible: true }] } },
+          { $limit: 20 },
+          {
+            $project: {
+              name: 1, slug: 1, logo: 1, coverImage: 1, cuisines: 1, rating: 1,
+              timing: 1, deliverySettings: 1, address: 1, location: 1, distanceMeters: 1, alwaysVisible: 1,
+            },
+          },
+        ]);
+        restaurants = geoResults.map((r) => ({
+          ...r,
+          distanceKm: Math.round((r.distanceMeters / 1000) * 10) / 10,
+        }));
       } catch (geoErr) {
-        console.warn("[home/feed] $nearSphere failed, falling back:", geoErr.message);
-      }
-
-      // If geo query returned nothing (no restaurants have coordinates yet), fall back
-      if (restaurants.length === 0) {
-        restaurants = await Restaurant.find({ status: "active" })
-          .select("name slug logo coverImage cuisines rating timing deliverySettings address location")
-          .limit(20)
-          .lean();
+        console.warn("[home/feed] $geoNear failed:", geoErr.message);
+        restaurants = [];
       }
     } else {
       // No location provided: return all active restaurants
@@ -124,7 +131,7 @@ const getHomeFeed = async (req, res, next) => {
       }
     }
 
-    ApiResponse.send(res, 200, "Home feed", { categories, restaurants, items });
+    ApiResponse.send(res, 200, "Home feed", { categories, restaurants, items, radiusKm });
   } catch (error) {
     next(error);
   }
