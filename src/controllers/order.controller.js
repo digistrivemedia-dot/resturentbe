@@ -297,8 +297,9 @@ const placeOrder = async (req, res, next) => {
 
     // New-customer discount — 50% off subtotal, uncapped, for each of a customer's
     // first 4 orders ever (eligibility only advances once an order is actually confirmed —
-    // see the counter increment near the bottom of this function).
-    const isFirstFourOrder = (req.user.newCustomerOrdersUsed || 0) < 4;
+    // see the counter increment near the bottom of this function). Delivery orders only —
+    // pickup/dine-in/self-service never qualify and never burn the customer's 4 uses.
+    const isFirstFourOrder = isDeliveryOrder && (req.user.newCustomerOrdersUsed || 0) < 4;
     let newCustomerDiscount = isFirstFourOrder ? Math.round(subtotal * 0.5 * 100) / 100 : 0;
 
     // New-customer, membership, and coupon discounts don't stack — whichever is worth

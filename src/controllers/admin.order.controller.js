@@ -99,7 +99,27 @@ const processRefund = async (req, res, next) => {
 
     const refundAmount = amount || order.pricing.total;
 
-    // Mark order as refunded
+    // Process refund via Razorpay first — only mark the order as refunded
+    // once Razorpay actually confirms the money movement. Marking it
+    // beforehand meant a failed Razorpay call still left the order showing
+    // "Refunded" with no way for the admin to tell the customer was never
+    // paid back.
+    if (order.paymentId) {
+      const { createRefund } = require("../services/razorpay.service");
+      try {
+        await createRefund(order.paymentId, refundAmount, {
+          orderNumber: order.orderNumber,
+          reason: reason || "Admin refund",
+        });
+      } catch (refundErr) {
+        // The Razorpay SDK rejects with a plain { statusCode, error: { description } }
+        // object, not an Error — refundErr.message is always undefined.
+        const razorpayMessage = refundErr.error?.description || refundErr.message || "Unknown error";
+        console.error("[Razorpay Refund] Failed:", razorpayMessage);
+        throw new ApiError(502, `Razorpay refund failed: ${razorpayMessage}`);
+      }
+    }
+
     order.paymentStatus = PAYMENT_STATUS.REFUNDED;
     order.status = ORDER_STATUS.CANCELLED;
     order.cancellation = {
@@ -116,23 +136,6 @@ const processRefund = async (req, res, next) => {
     });
 
     await order.save();
-
-    // Process refund via Razorpay if payment was online
-    if (order.paymentId) {
-      try {
-        const { createRefund } = require("../services/razorpay.service");
-        const refund = await createRefund(order.paymentId, refundAmount, {
-          orderNumber: order.orderNumber,
-          reason: reason || "Admin refund",
-        });
-        order.cancellation.refundStatus = "processed";
-        await order.save();
-      } catch (refundErr) {
-        console.error("[Razorpay Refund] Failed:", refundErr.message);
-        order.cancellation.refundStatus = "pending";
-        await order.save();
-      }
-    }
 
     return ApiResponse.send(res, 200, "Refund processed", {
       order,
