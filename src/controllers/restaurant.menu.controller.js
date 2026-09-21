@@ -52,6 +52,7 @@ const addMenuItem = async (req, res, next) => {
       nutritionalInfo,
       allergens,
       sortOrder,
+      petpooja,
     } = req.body;
 
     const menuItem = await MenuItem.create({
@@ -73,6 +74,7 @@ const addMenuItem = async (req, res, next) => {
       nutritionalInfo,
       allergens,
       sortOrder,
+      petpooja,
     });
 
     return ApiResponse.send(res, 201, "Menu item added", { menuItem });
@@ -111,10 +113,20 @@ const updateMenuItem = async (req, res, next) => {
       "allergens",
       "sortOrder",
       "isBestseller",
+      // Petpooja POS mapping (itemId/taxes) — variants[]/addonGroups[] above
+      // already carry their own petpoojaVariationId/petpoojaAddonItemId when
+      // sent as part of a full variants/addonGroups update.
+      "petpooja",
     ];
 
     for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
+      if (req.body[field] === undefined) continue;
+      // The menu item edit form only ever sends { itemId } for petpooja —
+      // a plain overwrite would silently wipe out `taxes` if it was ever set
+      // separately (e.g. via direct API), since that field has no UI yet.
+      if (field === "petpooja") {
+        menuItem.petpooja = { ...(menuItem.petpooja || {}), ...req.body.petpooja };
+      } else {
         menuItem[field] = req.body[field];
       }
     }

@@ -106,6 +106,19 @@ const restaurantSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    // Petpooja is this restaurant's POS — once linked, placed orders get
+    // pushed there so kitchen staff see them alongside Zomato/Swiggy orders.
+    // accessToken is select:false since it authenticates order pushes —
+    // unlike bankDetails, this one is worth hiding from default queries.
+    posIntegration: {
+      petpooja: {
+        isLinked: { type: Boolean, default: false },
+        restID: String,
+        accessToken: { type: String, select: false },
+        linkedAt: Date,
+        lastMenuSyncAt: Date,
+      },
+    },
   },
   { timestamps: true }
 );

@@ -219,4 +219,111 @@ const handleRazorpayWebhook = async (req, res) => {
   }
 };
 
-module.exports = { handleFlashWebhook, handleRazorpayWebhook };
+// Petpooja calls this with restID/orderID/status whenever the order's state
+// changes on their POS (kitchen accepts/rejects, marks food ready, etc.) —
+// this is the callback_url sent with every Save Order request.
+function isValidPetpoojaWebhook(req) {
+  const token = process.env.PETPOOJA_WEBHOOK_TOKEN;
+  if (!token) return true; // not configured yet — allow through, same as Flash's fallback
+
+  const received = req.headers["authorization"] || "";
+  const expected = `Bearer ${token}`;
+  const receivedBuf = Buffer.from(received);
+  const expectedBuf = Buffer.from(expected);
+  if (receivedBuf.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(receivedBuf, expectedBuf);
+}
+
+// Status-code → our ORDER_STATUS mapping. NOT confirmed by Petpooja's PDFs
+// (neither doc lists the actual numeric/string codes their callback sends —
+// only that it can "accept, mark food as ready, or reject") — this is a
+// best-effort guess to verify during sandbox testing. Anything unrecognized
+// is logged and stored as lastCallbackStatus without changing order.status,
+// so an unmapped code never crashes or silently misfires a transition.
+const PETPOOJA_TO_ORDER_STATUS = {
+  "-1": ORDER_STATUS.CANCELLED,
+  "1": ORDER_STATUS.CONFIRMED,
+  "2": ORDER_STATUS.CONFIRMED,
+  "3": ORDER_STATUS.CONFIRMED,
+  "4": ORDER_STATUS.PREPARING,
+  "5": ORDER_STATUS.READY,
+  "10": ORDER_STATUS.DELIVERED,
+};
+
+// Rank order so a delayed/out-of-order callback can't regress an order that
+// already moved further via the restaurant portal (or vice versa).
+const STATUS_RANK = [
+  ORDER_STATUS.PLACED,
+  ORDER_STATUS.CONFIRMED,
+  ORDER_STATUS.PREPARING,
+  ORDER_STATUS.READY,
+  ORDER_STATUS.PICKED_UP,
+  ORDER_STATUS.OUT_FOR_DELIVERY,
+  ORDER_STATUS.DELIVERED,
+];
+
+// POST /api/v1/webhooks/petpooja/order-callback
+const handlePetpoojaOrderCallback = async (req, res) => {
+  try {
+    if (!isValidPetpoojaWebhook(req)) {
+      console.warn("[Petpooja Webhook] Rejected — missing/invalid Authorization header");
+      return res.status(401).json({ status: false, message: "Unauthorized" });
+    }
+
+    // Always respond 200 quickly so Petpooja doesn't retry
+    res.status(200).json({ status: true, message: "Webhook Processed" });
+
+    const { orderID, restID, status, cancel_reason } = req.body || {};
+    console.log("[Petpooja Webhook] Received:", JSON.stringify(req.body));
+
+    if (!orderID) {
+      console.warn("[Petpooja Webhook] Missing orderID", req.body);
+      return;
+    }
+
+    // orderID sent with Save Order was our own order.orderNumber — that's
+    // the value Petpooja should echo back here.
+    const order = await Order.findOne({ orderNumber: orderID }).populate("customer", "name");
+    if (!order) {
+      console.warn(`[Petpooja Webhook] Order not found for orderID/restID: ${orderID} / ${restID}`);
+      return;
+    }
+
+    order.petpooja = order.petpooja || {};
+    order.petpooja.lastCallbackStatus = String(status ?? "");
+    order.petpooja.lastCallbackAt = new Date();
+    if (cancel_reason) order.petpooja.cancelReason = cancel_reason;
+
+    const mappedStatus = PETPOOJA_TO_ORDER_STATUS[String(status)];
+    if (mappedStatus) {
+      const currentRank = STATUS_RANK.indexOf(order.status);
+      const newRank = STATUS_RANK.indexOf(mappedStatus);
+      const isCancel = mappedStatus === ORDER_STATUS.CANCELLED;
+      const alreadyDelivered = order.status === ORDER_STATUS.DELIVERED;
+
+      if ((isCancel && !alreadyDelivered) || (!isCancel && newRank >= currentRank)) {
+        order.status = mappedStatus;
+        order.statusHistory.push({
+          status: mappedStatus,
+          timestamp: new Date(),
+          note: `Petpooja: status ${status}`,
+        });
+      } else {
+        console.log(
+          `[Petpooja Webhook] Ignored stale/out-of-order status ${status} for order ${order.orderNumber} (already ${order.status})`
+        );
+      }
+    } else {
+      console.warn(`[Petpooja Webhook] Unrecognized status code "${status}" — stored raw, order.status unchanged`);
+    }
+
+    await order.save();
+    emitOrderUpdate(order.restaurant, order.customer?._id || order.customer, order);
+
+    console.log(`[Petpooja Webhook] Order ${order.orderNumber} → status ${status}`);
+  } catch (err) {
+    console.error("[Petpooja Webhook] Error:", err.message);
+  }
+};
+
+module.exports = { handleFlashWebhook, handleRazorpayWebhook, handlePetpoojaOrderCallback };

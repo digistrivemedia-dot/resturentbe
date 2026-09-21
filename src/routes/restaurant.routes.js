@@ -83,6 +83,16 @@ const {
   getItemsAnalytics,
   getCustomersAnalytics,
 } = require("../controllers/restaurant.analytics.controller");
+const {
+  linkPetpooja,
+  getPetpoojaStatus,
+  unlinkPetpooja,
+} = require("../controllers/restaurant.pos.controller");
+const {
+  getNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+} = require("../controllers/restaurant.notification.controller");
 
 // Apply auth, role, and restaurant middleware to all routes
 router.use(auth, role("restaurant_owner"), restaurantMiddleware);
@@ -143,6 +153,16 @@ router.put("/profile", updateProfile);
 router.put("/change-password", changePassword);
 router.put("/settings", updateSettings);
 router.get("/payouts", getPayouts);
+
+// Petpooja POS
+router.get("/petpooja/status", getPetpoojaStatus);
+router.post("/petpooja/link", linkPetpooja);
+router.post("/petpooja/unlink", unlinkPetpooja);
+
+// Notifications
+router.get("/notifications", getNotifications);
+router.put("/notifications/:id/read", markNotificationRead);
+router.put("/notifications/read-all", markAllNotificationsRead);
 
 // Analytics
 router.get("/analytics/overview", getOverview);

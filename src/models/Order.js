@@ -167,6 +167,19 @@ const orderSchema = new mongoose.Schema(
         dispatchFailedReason: String,
       },
     },
+    // Petpooja POS push status — parallel to deliveryTracking.flash above,
+    // but sibling-level (not delivery-related) since Petpooja is about the
+    // kitchen/POS side, not the rider. orderNumber (already unique) doubles
+    // as the orderID we send Petpooja, so their callback can be matched back
+    // to this order by that same value.
+    petpooja: {
+      pushedAt: Date,
+      pushStatus: { type: String, enum: ["success", "failed"] },
+      pushFailedReason: String,
+      lastCallbackStatus: String,
+      lastCallbackAt: Date,
+      cancelReason: String,
+    },
     rating: {
       // One rating per distinct menu item in the order — not per cart line, so
       // ordering the same dish twice (e.g. two customizations) still gets one slot.

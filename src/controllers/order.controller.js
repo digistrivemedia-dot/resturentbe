@@ -14,10 +14,30 @@ const { ORDER_STATUS, PAYMENT_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
 const { createRazorpayOrder, verifyPaymentSignature } = require("../services/razorpay.service");
 const { cancelTask, checkServiceability, geocodeAddress } = require("../services/flash.service");
+const petpoojaService = require("../services/petpooja.service");
 const { isCategoryAvailableNow } = require("../utils/categoryAvailability");
 const notifyAdmin = require("../utils/notifyAdmin");
 
 const LARGE_ORDER_THRESHOLD = 5000;
+
+// Fires right when an order becomes CONFIRMED, if the restaurant is linked
+// to Petpooja — never blocks order placement on failure; a failed push just
+// means staff need to manually enter the order into their POS, same
+// fail-open behavior as Flash's dispatchFailedReason elsewhere in this app.
+async function pushOrderToPetpoojaIfLinked(order, restaurant, customer) {
+  if (!restaurant.posIntegration?.petpooja?.isLinked) return;
+
+  const callbackUrl = `${process.env.BASE_URL}/api/v1/webhooks/petpooja/order-callback`;
+  try {
+    const result = await petpoojaService.saveOrder(order, restaurant, customer, callbackUrl);
+    order.petpooja = { ...(order.petpooja || {}), pushedAt: new Date(), pushStatus: "success" };
+    console.log(`[Petpooja] Order ${order.orderNumber} pushed:`, JSON.stringify(result));
+  } catch (err) {
+    order.petpooja = { ...(order.petpooja || {}), pushStatus: "failed", pushFailedReason: err.message };
+    console.error(`[Petpooja] Push failed for order ${order.orderNumber}:`, err.message);
+  }
+  await order.save();
+}
 
 // Statuses where the customer can cancel outright — no kitchen/rider
 // commitment yet. Anything past this needs the restaurant's sign-off via
@@ -410,6 +430,8 @@ const placeOrder = async (req, res, next) => {
     });
     await order.save();
 
+    await pushOrderToPetpoojaIfLinked(order, restaurant, req.user);
+
     if (order.pricing.total >= LARGE_ORDER_THRESHOLD) {
       notifyAdmin("largeOrder", {
         subject: `Large order alert — #${order.orderNumber} (₹${order.pricing.total})`,
@@ -446,7 +468,16 @@ const placeOrder = async (req, res, next) => {
       .populate("restaurant", "name slug deliverySettings address")
       .lean();
 
-    // Notify restaurant in real time
+    // Notify restaurant — persisted notification + real-time push
+    if (restaurant.owner) {
+      await Notification.create({
+        user: restaurant.owner,
+        title: "New order received",
+        message: `Order #${order.orderNumber} — ₹${order.pricing.total}`,
+        type: "order",
+        data: { orderId: order._id, restaurantId: restaurant._id },
+      });
+    }
     try {
       const io = getIo();
       if (io) {
@@ -585,6 +616,16 @@ const cancelOrder = async (req, res, next) => {
         await cancelTask(flashTaskId);
       } catch (flashErr) {
         console.error(`[Flash] cancelTask error for order ${order.orderNumber}:`, flashErr.message);
+      }
+    }
+
+    // If this order was already pushed to Petpooja, cancel it there too —
+    // the only write-back their API supports.
+    if (order.petpooja?.pushStatus === "success") {
+      try {
+        await petpoojaService.cancelOrder({ _id: order.restaurant }, order, order.cancellation.reason);
+      } catch (petpoojaErr) {
+        console.error(`[Petpooja] cancelOrder error for order ${order.orderNumber}:`, petpoojaErr.message);
       }
     }
 
@@ -847,6 +888,8 @@ const verifyPayment = async (req, res, next) => {
     // 4. Create notification
     const restaurant = await Restaurant.findById(order.restaurant);
 
+    await pushOrderToPetpoojaIfLinked(order, restaurant, req.user);
+
     if (order.pricing.total >= LARGE_ORDER_THRESHOLD) {
       notifyAdmin("largeOrder", {
         subject: `Large order alert — #${order.orderNumber} (₹${order.pricing.total})`,
@@ -867,6 +910,15 @@ const verifyPayment = async (req, res, next) => {
       .populate("restaurant", "name slug deliverySettings address")
       .lean();
 
+    if (restaurant.owner) {
+      await Notification.create({
+        user: restaurant.owner,
+        title: "New order received",
+        message: `Order #${order.orderNumber} — ₹${order.pricing.total}`,
+        type: "order",
+        data: { orderId: order._id, restaurantId: order.restaurant },
+      });
+    }
     try {
       const io = getIo();
       if (io) {

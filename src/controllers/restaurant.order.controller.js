@@ -5,6 +5,7 @@ const ApiError = require("../utils/ApiError");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
 const { createTask, cancelTask } = require("../services/flash.service");
+const petpoojaService = require("../services/petpooja.service");
 
 function emitOrderUpdate(restaurantId, order) {
   try {
@@ -174,6 +175,14 @@ const rejectOrder = async (req, res, next) => {
       note: reason || "Rejected by restaurant",
     });
 
+    if (order.petpooja?.pushStatus === "success") {
+      try {
+        await petpoojaService.cancelOrder(req.restaurant, order, order.cancellation.reason);
+      } catch (petpoojaErr) {
+        console.error(`[Petpooja] cancelOrder error for order ${order.orderNumber}:`, petpoojaErr.message);
+      }
+    }
+
     await order.save();
 
     emitOrderUpdate(req.restaurant._id, order);
@@ -251,6 +260,14 @@ const cancelOrderByRestaurant = async (req, res, next) => {
       updatedBy: req.user._id,
       note: order.cancellation.reason,
     });
+
+    if (order.petpooja?.pushStatus === "success") {
+      try {
+        await petpoojaService.cancelOrder(req.restaurant, order, order.cancellation.reason);
+      } catch (petpoojaErr) {
+        console.error(`[Petpooja] cancelOrder error for order ${order.orderNumber}:`, petpoojaErr.message);
+      }
+    }
 
     await order.save();
 
