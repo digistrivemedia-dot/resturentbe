@@ -137,11 +137,39 @@ const getHomeFeed = async (req, res, next) => {
   }
 };
 
-// GET /home/showcase — real categories + real dishes for the public landing page
+// GET /home/showcase?lat=X&lng=Y — real categories + real dishes for the public landing page
 const getLandingShowcase = async (req, res, next) => {
   try {
-    const activeRestaurants = await Restaurant.find({ status: "active" }).select("_id").lean();
-    const restaurantIds = activeRestaurants.map((r) => r._id);
+    const { lat, lng } = req.query;
+    let restaurantIds = [];
+
+    if (lat && lng) {
+      const { radiusMeters } = await getDiscoveryRadiusMeters();
+      try {
+        const nearby = await Restaurant.aggregate([
+          {
+            $geoNear: {
+              near: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
+              distanceField: "distanceMeters",
+              spherical: true,
+              query: { status: "active" },
+            },
+          },
+          { $match: { $or: [{ distanceMeters: { $lte: radiusMeters } }, { alwaysVisible: true }] } },
+          { $project: { _id: 1 } },
+        ]);
+        restaurantIds = nearby.map((r) => r._id);
+      } catch (geoErr) {
+        console.warn("[home/showcase] $geoNear failed:", geoErr.message);
+      }
+    }
+
+    // No location yet, or nothing nearby — fall back to every active
+    // restaurant so the showcase section never renders empty.
+    if (restaurantIds.length === 0) {
+      const activeRestaurants = await Restaurant.find({ status: "active" }).select("_id").lean();
+      restaurantIds = activeRestaurants.map((r) => r._id);
+    }
 
     const items = await MenuItem.find({
       restaurant: { $in: restaurantIds },
