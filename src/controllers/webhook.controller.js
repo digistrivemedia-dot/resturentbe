@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
 const User = require("../models/User");
+const Restaurant = require("../models/Restaurant");
+const PetpoojaMenuCache = require("../models/PetpoojaMenuCache");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
 const notifyAdmin = require("../utils/notifyAdmin");
@@ -326,4 +328,65 @@ const handlePetpoojaOrderCallback = async (req, res) => {
   }
 };
 
-module.exports = { handleFlashWebhook, handleRazorpayWebhook, handlePetpoojaOrderCallback };
+// Petpooja calls this when "Menu Trigger" is clicked on their dashboard (or
+// whenever their menu changes) — it pushes their catalogue (categories,
+// items, variations, addongroups, taxes) to whatever URL is set as "Menu
+// Sharing Endpoint" on the Configuration page. This is the reverse direction
+// of what the field name suggests: THEY push TO us, we don't fetch from them
+// ("Fetch Menu API" is deprecated per their team's email — this replaces it).
+//
+// Payload shape isn't confirmed from either PDF we have (neither documents
+// it) — stored raw/as-is rather than parsed into a strict schema. Once this
+// receives a real push, log the body and adjust restID extraction below if
+// it doesn't land where guessed (top-level restID, restaurantId, or
+// restaurants[0].restaurantid are the common shapes across Petpooja-style
+// integrations, so all three are tried).
+//
+// POST /api/v1/webhooks/petpooja/menu-push
+const handlePetpoojaMenuPush = async (req, res) => {
+  try {
+    if (!isValidPetpoojaWebhook(req)) {
+      console.warn("[Petpooja Menu Push] Rejected — missing/invalid Authorization header");
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    // Always ack quickly so Petpooja doesn't retry
+    res.status(200).json({ success: true, message: "Menu received" });
+
+    const body = req.body || {};
+    const restID =
+      body.restID || body.restaurantId || body.restaurants?.[0]?.restaurantid || null;
+
+    console.log("[Petpooja Menu Push] Received for restID:", restID);
+
+    if (!restID) {
+      console.warn("[Petpooja Menu Push] Could not find restID in payload — stored anyway under restID: null. Payload keys:", Object.keys(body));
+    }
+
+    const restaurant = await Restaurant.findOne({ "posIntegration.petpooja.restID": restID });
+    if (!restaurant) {
+      console.warn(`[Petpooja Menu Push] No restaurant linked to restID ${restID} — payload dropped`);
+      return;
+    }
+
+    await PetpoojaMenuCache.findOneAndUpdate(
+      { restaurant: restaurant._id },
+      { restaurant: restaurant._id, restID, raw: body, receivedAt: new Date() },
+      { upsert: true }
+    );
+
+    restaurant.posIntegration.petpooja.lastMenuSyncAt = new Date();
+    await restaurant.save();
+
+    console.log(`[Petpooja Menu Push] Cached menu for restaurant ${restaurant._id} (restID ${restID})`);
+  } catch (err) {
+    console.error("[Petpooja Menu Push] Error:", err.message);
+  }
+};
+
+module.exports = {
+  handleFlashWebhook,
+  handleRazorpayWebhook,
+  handlePetpoojaOrderCallback,
+  handlePetpoojaMenuPush,
+};

@@ -1,4 +1,5 @@
 const Restaurant = require("../models/Restaurant");
+const PetpoojaMenuCache = require("../models/PetpoojaMenuCache");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
 
@@ -57,4 +58,24 @@ const unlinkPetpooja = async (req, res, next) => {
   }
 };
 
-module.exports = { linkPetpooja, getPetpoojaStatus, unlinkPetpooja };
+// GET /restaurant/petpooja/menu-cache — the last catalogue Petpooja pushed to
+// our Menu Sharing webhook, so item IDs can be read off it when filling in
+// MenuItem.petpooja.itemId (PUT /restaurant/menu/:id) instead of eyeballing
+// Petpooja's own dashboard.
+const getPetpoojaMenuCache = async (req, res, next) => {
+  try {
+    const cache = await PetpoojaMenuCache.findOne({ restaurant: req.restaurant._id }).lean();
+    if (!cache) {
+      throw new ApiError(404, "No menu has been pushed by Petpooja yet — trigger it from their dashboard's Menu Management section");
+    }
+    return ApiResponse.send(res, 200, "Petpooja menu cache fetched", {
+      restID: cache.restID,
+      receivedAt: cache.receivedAt,
+      raw: cache.raw,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { linkPetpooja, getPetpoojaStatus, unlinkPetpooja, getPetpoojaMenuCache };

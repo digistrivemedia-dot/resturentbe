@@ -87,6 +87,7 @@ const {
   linkPetpooja,
   getPetpoojaStatus,
   unlinkPetpooja,
+  getPetpoojaMenuCache,
 } = require("../controllers/restaurant.pos.controller");
 const {
   getNotifications,
@@ -158,6 +159,7 @@ router.get("/payouts", getPayouts);
 router.get("/petpooja/status", getPetpoojaStatus);
 router.post("/petpooja/link", linkPetpooja);
 router.post("/petpooja/unlink", unlinkPetpooja);
+router.get("/petpooja/menu-cache", getPetpoojaMenuCache);
 
 // Notifications
 router.get("/notifications", getNotifications);
