@@ -336,11 +336,15 @@ const handlePetpoojaOrderCallback = async (req, res) => {
 // ("Fetch Menu API" is deprecated per their team's email — this replaces it).
 //
 // Payload shape isn't confirmed from either PDF we have (neither documents
-// it) — stored raw/as-is rather than parsed into a strict schema. Once this
-// receives a real push, log the body and adjust restID extraction below if
-// it doesn't land where guessed (top-level restID, restaurantId, or
-// restaurants[0].restaurantid are the common shapes across Petpooja-style
-// integrations, so all three are tried).
+// it) — stored raw/as-is rather than parsed into a strict schema. restID
+// extraction confirmed against a real sandbox push (2026-09-29): the value
+// matching what we store as restID/menusharingcode lives at
+// restaurants[0].details.menusharingcode — NOT restaurants[0].restaurantid
+// (that's Petpooja's own internal numeric id, e.g. "5414", unrelated to the
+// restID used everywhere else in this integration, e.g. "t4pqh7yeaj"). The
+// Save Order PDF's own wording confirms this: "provide the Menu sharing
+// code received from the menu payload as a restID." Other shapes kept as
+// fallback in case a different payload variant ever shows up.
 //
 // POST /api/v1/webhooks/petpooja/menu-push
 const handlePetpoojaMenuPush = async (req, res) => {
@@ -355,7 +359,11 @@ const handlePetpoojaMenuPush = async (req, res) => {
 
     const body = req.body || {};
     const restID =
-      body.restID || body.restaurantId || body.restaurants?.[0]?.restaurantid || null;
+      body.restaurants?.[0]?.details?.menusharingcode ||
+      body.restID ||
+      body.restaurantId ||
+      body.restaurants?.[0]?.restaurantid ||
+      null;
 
     console.log("[Petpooja Menu Push] Received for restID:", restID);
 
