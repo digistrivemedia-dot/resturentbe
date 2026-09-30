@@ -23,6 +23,9 @@ const sendSms = async ({ to, text }) => {
   });
 
   const data = await response.json();
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[SmartPing SMS] to ${to}:`, data);
+  }
   if (data.state !== "SUBMIT_ACCEPTED") {
     throw new Error(data.description || "Failed to send SMS");
   }

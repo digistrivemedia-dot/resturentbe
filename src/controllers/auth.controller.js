@@ -163,6 +163,10 @@ const sendOtp = async (req, res, next) => {
       expiresAt: isReviewAccount ? Infinity : Date.now() + 5 * 60 * 1000,
     });
 
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[OTP] Generated OTP for ${identifier}: ${otp}`);
+    }
+
     // The review account's whole purpose is not depending on real email
     // delivery (reviewers/testers use the fixed OTP directly) — real
     // customer accounts still need an actual OTP sent, so their failures

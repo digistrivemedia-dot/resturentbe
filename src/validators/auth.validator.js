@@ -12,6 +12,15 @@ const registerValidator = [
     .withMessage("Invalid role"),
 ];
 
+const sanitizePhone = (val) => {
+  if (!val) return val;
+  let digits = String(val).replace(/\D/g, "");
+  if (digits.length > 10 && digits.startsWith("91")) digits = digits.slice(2);
+  if (digits.length > 10 && digits.startsWith("0")) digits = digits.slice(1);
+  if (digits.length > 10) digits = digits.slice(-10);
+  return digits;
+};
+
 const loginValidator = [
   body("email").trim().isEmail().withMessage("Valid email is required"),
   body("password").notEmpty().withMessage("Password is required"),
@@ -19,7 +28,11 @@ const loginValidator = [
 
 const sendOtpValidator = [
   body("email").optional().trim().isEmail().withMessage("Valid email is required"),
-  body("phone").optional().trim().matches(/^\d{10}$/).withMessage("Phone must be 10 digits"),
+  body("phone")
+    .optional()
+    .customSanitizer(sanitizePhone)
+    .matches(/^\d{10}$/)
+    .withMessage("Phone must be 10 digits"),
   body().custom((_, { req }) => {
     if (!req.body.email && !req.body.phone) throw new Error("Email or phone is required");
     return true;
@@ -28,7 +41,11 @@ const sendOtpValidator = [
 
 const verifyOtpValidator = [
   body("email").optional().trim().isEmail().withMessage("Valid email is required"),
-  body("phone").optional().trim().matches(/^\d{10}$/).withMessage("Phone must be 10 digits"),
+  body("phone")
+    .optional()
+    .customSanitizer(sanitizePhone)
+    .matches(/^\d{10}$/)
+    .withMessage("Phone must be 10 digits"),
   body().custom((_, { req }) => {
     if (!req.body.email && !req.body.phone) throw new Error("Email or phone is required");
     return true;
@@ -56,7 +73,7 @@ const updateProfileValidator = [
     .withMessage("Valid email is required"),
   body("phone")
     .optional()
-    .trim()
+    .customSanitizer(sanitizePhone)
     .matches(/^\d{10}$/)
     .withMessage("Phone must be 10 digits"),
 ];
