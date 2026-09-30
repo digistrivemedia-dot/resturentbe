@@ -18,11 +18,21 @@ const loginValidator = [
 ];
 
 const sendOtpValidator = [
-  body("email").trim().isEmail().withMessage("Valid email is required"),
+  body("email").optional().trim().isEmail().withMessage("Valid email is required"),
+  body("phone").optional().trim().matches(/^\d{10}$/).withMessage("Phone must be 10 digits"),
+  body().custom((_, { req }) => {
+    if (!req.body.email && !req.body.phone) throw new Error("Email or phone is required");
+    return true;
+  }),
 ];
 
 const verifyOtpValidator = [
-  body("email").trim().isEmail().withMessage("Valid email is required"),
+  body("email").optional().trim().isEmail().withMessage("Valid email is required"),
+  body("phone").optional().trim().matches(/^\d{10}$/).withMessage("Phone must be 10 digits"),
+  body().custom((_, { req }) => {
+    if (!req.body.email && !req.body.phone) throw new Error("Email or phone is required");
+    return true;
+  }),
   body("otp")
     .trim()
     .isLength({ min: 6, max: 6 })

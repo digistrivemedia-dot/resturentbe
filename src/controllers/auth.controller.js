@@ -4,7 +4,13 @@ const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { generateAccessToken, generateRefreshToken } = require("../utils/generateToken");
 const sendEmail = require("../utils/sendEmail");
+const sendSms = require("../utils/sendSms");
 const jwt = require("jsonwebtoken");
+
+// DLT-approved template — only the OTP digits may vary, everything else must
+// match the registered content exactly or the carrier rejects the SMS.
+const otpSmsText = (otp) =>
+  `Dear Customer, your OTP to log in to Pedhakammal Food Company is ${otp}. Please do not share it with anyone. - Pedhakammal Food Company`;
 
 // In-memory OTP store (move to Redis later)
 const otpStore = new Map();
@@ -139,61 +145,68 @@ const login = async (req, res, next) => {
   }
 };
 
-// POST /auth/send-otp — Send OTP to email
+// POST /auth/send-otp — Send OTP to email or phone (whichever is provided)
 const sendOtp = async (req, res, next) => {
   try {
-    const { email } = req.body;
+    const { email, phone } = req.body;
+    const identifier = phone || email;
 
-    const isReviewAccount = PLAY_REVIEW_EMAIL && PLAY_REVIEW_OTP && email.toLowerCase() === PLAY_REVIEW_EMAIL;
+    const isReviewAccount =
+      email && PLAY_REVIEW_EMAIL && PLAY_REVIEW_OTP && email.toLowerCase() === PLAY_REVIEW_EMAIL;
 
     // Generate 6-digit OTP (fixed, non-expiring for the review account)
     const otp = isReviewAccount ? PLAY_REVIEW_OTP : String(Math.floor(100000 + Math.random() * 900000));
 
     // Store with 5-min expiry (review account OTP never expires)
-    otpStore.set(email, {
+    otpStore.set(identifier, {
       otp,
       expiresAt: isReviewAccount ? Infinity : Date.now() + 5 * 60 * 1000,
     });
 
     // The review account's whole purpose is not depending on real email
     // delivery (reviewers/testers use the fixed OTP directly) — real
-    // customer accounts still need an actual email sent, so their failures
+    // customer accounts still need an actual OTP sent, so their failures
     // aren't swallowed.
     if (!isReviewAccount) {
-      await sendEmail({
-        to: email,
-        subject: "Your CafeSriisha Login OTP",
-        html: `
-          <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
-            <h2 style="color: #E23744;">CafeSriisha</h2>
-            <p>Your OTP for login is:</p>
-            <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333; padding: 16px 0;">
-              ${otp}
+      if (phone) {
+        await sendSms({ to: phone, text: otpSmsText(otp) });
+      } else {
+        await sendEmail({
+          to: email,
+          subject: "Your CafeSriisha Login OTP",
+          html: `
+            <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
+              <h2 style="color: #E23744;">CafeSriisha</h2>
+              <p>Your OTP for login is:</p>
+              <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333; padding: 16px 0;">
+                ${otp}
+              </div>
+              <p style="color: #888; font-size: 14px;">This OTP is valid for 5 minutes. Do not share it with anyone.</p>
             </div>
-            <p style="color: #888; font-size: 14px;">This OTP is valid for 5 minutes. Do not share it with anyone.</p>
-          </div>
-        `,
-      });
+          `,
+        });
+      }
     }
 
-    ApiResponse.send(res, 200, "OTP sent to your email", { email });
+    ApiResponse.send(res, 200, phone ? "OTP sent to your phone" : "OTP sent to your email", { email, phone });
   } catch (error) {
     next(error);
   }
 };
 
-// POST /auth/verify-otp — Verify OTP and login/register
+// POST /auth/verify-otp — Verify OTP and login/register (email or phone)
 const verifyOtp = async (req, res, next) => {
   try {
-    const { email, otp } = req.body;
+    const { email, phone, otp } = req.body;
+    const identifier = phone || email;
 
-    const stored = otpStore.get(email);
+    const stored = otpStore.get(identifier);
     if (!stored) {
       throw new ApiError(400, "OTP expired or not found. Please request a new one");
     }
 
     if (Date.now() > stored.expiresAt) {
-      otpStore.delete(email);
+      otpStore.delete(identifier);
       throw new ApiError(400, "OTP has expired. Please request a new one");
     }
 
@@ -203,20 +216,19 @@ const verifyOtp = async (req, res, next) => {
 
     // OTP valid — delete it (keep the review account's OTP reusable)
     if (stored.expiresAt !== Infinity) {
-      otpStore.delete(email);
+      otpStore.delete(identifier);
     }
 
     // Find or create user
-    let user = await User.findOne({ email });
+    let user = await User.findOne(phone ? { phone } : { email });
     let isNewUser = false;
 
     if (!user) {
-      user = await User.create({
-        email,
-        role: "customer",
-        authProvider: "email",
-        isEmailVerified: true,
-      });
+      user = await User.create(
+        phone
+          ? { phone, role: "customer", authProvider: "phone", isPhoneVerified: true }
+          : { email, role: "customer", authProvider: "email", isEmailVerified: true }
+      );
       isNewUser = true;
     }
 
@@ -225,7 +237,8 @@ const verifyOtp = async (req, res, next) => {
     }
 
     user.lastLogin = new Date();
-    user.isEmailVerified = true;
+    if (phone) user.isPhoneVerified = true;
+    else user.isEmailVerified = true;
     await user.save();
 
     const accessToken = generateAccessToken(user._id);
