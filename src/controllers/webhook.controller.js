@@ -357,7 +357,11 @@ const handlePetpoojaMenuPush = async (req, res) => {
     }
 
     // Always ack quickly so Petpooja doesn't retry
-    res.status(200).json({ success: true, message: "Menu received" });
+    // Exact body from the blueprint's Push Menu > 200 OK schema. "success" is
+    // the STRING "1", not a boolean — Petpooja validates this and reports
+    // "Menu trigger failed" on their dashboard if it doesn't match, even
+    // though the payload reached us fine.
+    res.status(200).json({ success: "1", message: "Menu items are successfully listed." });
 
     const body = req.body || {};
     const restID =
@@ -376,6 +380,17 @@ const handlePetpoojaMenuPush = async (req, res) => {
     const restaurant = await Restaurant.findOne({ "posIntegration.petpooja.restID": restID });
     if (!restaurant) {
       console.warn(`[Petpooja Menu Push] No restaurant linked to restID ${restID} — payload dropped`);
+      return;
+    }
+
+    // Never let a payload with no items replace a good catalogue. A health
+    // check, a probe, or a partial push would otherwise wipe the item/tax/
+    // addon ids that Save Order depends on, and the only symptom would be
+    // orders going out with wrong tax ids days later.
+    if (!Array.isArray(body.items) || body.items.length === 0) {
+      console.warn(
+        `[Petpooja Menu Push] Payload for ${restID} has no items — ignored, existing cache kept. Keys: ${Object.keys(body)}`
+      );
       return;
     }
 
