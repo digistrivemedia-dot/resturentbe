@@ -57,5 +57,10 @@ Module._load = origResolve;
     message: "Store Status updated successfully for store restID",
   });
 
+  // A missing store_status must NOT be read as "close the store".
+  res = fakeRes();
+  await c.handlePetpoojaUpdateStoreStatus({ body: { restID: "t4pqh7yeaj" } }, res);
+  assert.strictEqual(res._b.status, "failed", "absent store_status must not close the store");
+
   console.log("ok — all four response bodies match the blueprint");
 })().catch((e) => { console.error(e.message); process.exit(1); });

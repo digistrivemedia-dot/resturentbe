@@ -493,8 +493,19 @@ const handlePetpoojaUpdateStoreStatus = async (req, res) => {
       });
     }
 
-    // store_status arrives as a number in their example but a string in the
-    // attribute table — compare loosely so both 0 and "0" close the store.
+    // Never infer "closed" from a missing field — only an explicit 0/1 moves
+    // the store. Without this an absent store_status silently shuts the
+    // restaurant down, which is a far worse failure than rejecting the call.
+    if (store_status !== 0 && store_status !== 1 && store_status !== "0" && store_status !== "1") {
+      return res.status(200).json({
+        http_code: 400,
+        status: "failed",
+        message: "Store Status update failed",
+      });
+    }
+
+    // Arrives as a number in their example but a string in the attribute
+    // table — compare loosely so both 0 and "0" close the store.
     restaurant.timing = restaurant.timing || {};
     restaurant.timing.isOpen = String(store_status) === "1";
     await restaurant.save();
