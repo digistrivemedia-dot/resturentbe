@@ -5,6 +5,7 @@ const Cart = require("../models/Cart");
 const User = require("../models/User");
 const Restaurant = require("../models/Restaurant");
 const PetpoojaMenuCache = require("../models/PetpoojaMenuCache");
+const MenuItem = require("../models/MenuItem");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
 const notifyAdmin = require("../utils/notifyAdmin");
@@ -236,18 +237,19 @@ function isValidPetpoojaWebhook(req) {
   return crypto.timingSafeEqual(receivedBuf, expectedBuf);
 }
 
-// Status-code → our ORDER_STATUS mapping. NOT confirmed by Petpooja's PDFs
-// (neither doc lists the actual numeric/string codes their callback sends —
-// only that it can "accept, mark food as ready, or reject") — this is a
-// best-effort guess to verify during sandbox testing. Anything unrecognized
-// is logged and stored as lastCallbackStatus without changing order.status,
-// so an unmapped code never crashes or silently misfires a transition.
+// Status-code → our ORDER_STATUS mapping. Confirmed against Petpooja's API
+// blueprint (onlineorderingapisv210, "Order Callback Request/Response"):
+// -1 = Cancelled, 1/2/3 = Accepted, 4 = Dispatch, 5 = Food Ready, 10 = Delivered.
+// Note 4 is DISPATCH, not "preparing" — it ranks ABOVE 5 (food ready) despite
+// the lower number, so don't reorder these by code. Anything unrecognized is
+// logged and stored as lastCallbackStatus without changing order.status, so an
+// unmapped code never crashes or silently misfires a transition.
 const PETPOOJA_TO_ORDER_STATUS = {
   "-1": ORDER_STATUS.CANCELLED,
   "1": ORDER_STATUS.CONFIRMED,
   "2": ORDER_STATUS.CONFIRMED,
   "3": ORDER_STATUS.CONFIRMED,
-  "4": ORDER_STATUS.PREPARING,
+  "4": ORDER_STATUS.OUT_FOR_DELIVERY,
   "5": ORDER_STATUS.READY,
   "10": ORDER_STATUS.DELIVERED,
 };
@@ -392,9 +394,136 @@ const handlePetpoojaMenuPush = async (req, res) => {
   }
 };
 
+// The three APIs below are the reverse direction to everything above: the
+// merchant, standing at their Petpooja POS, drives OUR catalogue and store
+// state. Response bodies are copied verbatim from Petpooja's blueprint
+// (onlineorderingapisv210) — note stock uses "code" while store status uses
+// "http_code". That inconsistency is theirs; don't "tidy" it or the
+// sandbox's endpoint verification fails.
+async function resolveByRestID(restID) {
+  return Restaurant.findOne({ "posIntegration.petpooja.restID": restID });
+}
+
+// POST /api/v1/webhooks/petpooja/item-stock
+// Serves BOTH the Item On and Item Off endpoints — inStock carries the
+// direction, and Petpooja's own docs recommend one endpoint for both.
+const handlePetpoojaItemStock = async (req, res) => {
+  const fail = (message) => res.status(400).json({ code: 400, status: "failed", message });
+  try {
+    const { restID, type, inStock, itemID } = req.body || {};
+    console.log("[Petpooja ItemStock] Received:", JSON.stringify(req.body));
+
+    if (!restID || !Array.isArray(itemID)) {
+      return fail("Stock status not updated successfully");
+    }
+
+    const restaurant = await resolveByRestID(restID);
+    if (!restaurant) return fail("Stock status not updated successfully");
+
+    const ids = itemID.map(String);
+    if (type === "addon") {
+      // Addons live as subdocs, so this has to match on the nested
+      // petpoojaAddonItemId rather than a top-level field.
+      await MenuItem.updateMany(
+        { restaurant: restaurant._id },
+        { $set: { "addonGroups.$[].addons.$[a].isAvailable": !!inStock } },
+        { arrayFilters: [{ "a.petpoojaAddonItemId": { $in: ids } }] }
+      );
+    } else {
+      await MenuItem.updateMany(
+        { restaurant: restaurant._id, "petpooja.itemId": { $in: ids } },
+        { $set: { isAvailable: !!inStock } }
+      );
+    }
+
+    return res.status(200).json({
+      code: 200,
+      status: "success",
+      message: "Stock status updated successfully",
+    });
+  } catch (err) {
+    console.error("[Petpooja ItemStock] Error:", err.message);
+    return fail("Stock status not updated successfully");
+  }
+};
+
+// POST /api/v1/webhooks/petpooja/get-store-status
+const handlePetpoojaGetStoreStatus = async (req, res) => {
+  try {
+    const { restID } = req.body || {};
+    const restaurant = await resolveByRestID(restID);
+    if (!restaurant) {
+      return res.status(200).json({
+        http_code: 400,
+        status: "failed",
+        store_status: "0",
+        message: "Store not found",
+      });
+    }
+
+    return res.status(200).json({
+      http_code: 200,
+      status: "success",
+      store_status: restaurant.timing?.isOpen ? "1" : "0",
+      message: "Store Delivery Status fetched successfully",
+    });
+  } catch (err) {
+    console.error("[Petpooja GetStoreStatus] Error:", err.message);
+    return res.status(200).json({
+      http_code: 400,
+      status: "failed",
+      store_status: "0",
+      message: "Store Delivery Status fetch failed",
+    });
+  }
+};
+
+// POST /api/v1/webhooks/petpooja/update-store-status
+const handlePetpoojaUpdateStoreStatus = async (req, res) => {
+  try {
+    const { restID, store_status, reason } = req.body || {};
+    console.log("[Petpooja UpdateStoreStatus] Received:", JSON.stringify(req.body));
+
+    const restaurant = await resolveByRestID(restID);
+    if (!restaurant) {
+      return res.status(200).json({
+        http_code: 400,
+        status: "failed",
+        message: "Store not found",
+      });
+    }
+
+    // store_status arrives as a number in their example but a string in the
+    // attribute table — compare loosely so both 0 and "0" close the store.
+    restaurant.timing = restaurant.timing || {};
+    restaurant.timing.isOpen = String(store_status) === "1";
+    await restaurant.save();
+
+    console.log(
+      `[Petpooja UpdateStoreStatus] ${restID} → ${restaurant.timing.isOpen ? "OPEN" : "CLOSED"}${reason ? ` (${reason})` : ""}`
+    );
+
+    return res.status(200).json({
+      http_code: 200,
+      status: "success",
+      message: "Store Status updated successfully for store restID",
+    });
+  } catch (err) {
+    console.error("[Petpooja UpdateStoreStatus] Error:", err.message);
+    return res.status(200).json({
+      http_code: 400,
+      status: "failed",
+      message: "Store Status update failed",
+    });
+  }
+};
+
 module.exports = {
   handleFlashWebhook,
   handleRazorpayWebhook,
   handlePetpoojaOrderCallback,
   handlePetpoojaMenuPush,
+  handlePetpoojaItemStock,
+  handlePetpoojaGetStoreStatus,
+  handlePetpoojaUpdateStoreStatus,
 };

@@ -51,7 +51,7 @@ function splitIntoCgstSgst(taxAmount, taxPercentage) {
   ];
 }
 
-// Per-item tax lines for order_items[].item_tax. Uses the item's own
+// Per-item tax lines for OrderItem.details[].item_tax. Uses the item's own
 // Petpooja tax mapping if it's been filled in (see MenuItem.petpooja.taxes);
 // otherwise falls back to splitting the order's flat tax percentage across
 // this item's share of the subtotal.
@@ -122,40 +122,48 @@ function buildOrderItemPayload(orderItem, menuItem, order) {
     gst_liability: "restaurant",
     item_tax: buildItemTaxLines(orderItem, menuItem, order),
     tax_inclusive: false,
+    item_discount: "",
+    description: orderItem.specialInstructions || "",
     variation_name: variationName,
     variation_id: variationId,
-    // Wrapped in {details:[...]} rather than a bare "addon_items" array —
-    // see the envelope-shape note on buildSaveOrderPayload below for why.
     AddonItem: { details: addonItems },
   };
 }
 
+// Tax.details must be the per-item item_tax lines rolled up by tax id — the
+// ids have to match what the items reference, otherwise Petpooja can't tie
+// the two together. restaurant_liable_amt == tax because every line we send
+// is gst_liability:"restaurant" (this platform never collects GST itself).
+function aggregateTaxDetails(orderItems) {
+  const byId = new Map();
+  for (const item of orderItems) {
+    for (const line of item.item_tax) {
+      const existing = byId.get(line.id);
+      const amount = round2((existing ? Number(existing.tax) : 0) + Number(line.amount));
+      byId.set(line.id, {
+        id: line.id,
+        title: line.name,
+        type: "P",
+        price: String(line.tax_percentage),
+        tax: String(amount),
+        restaurant_liable_amt: String(amount),
+      });
+    }
+  }
+  return [...byId.values()];
+}
+
 // Builds the Save Order payload.
 //
-// ENVELOPE SHAPE — this is the single biggest unconfirmed guess in this
-// whole integration, and it changed once already during review. Petpooja's
-// own PDF only gives field tables per section (Restaurant/Customer/Order/
-// Payment/Items/Tax) plus one confirmed JSON example for order_items and
-// tax_details — it NEVER shows the full request envelope. A cross-check
-// against a third-party OpenAPI reconstruction of Petpooja's *public* docs
-// (github.com/api-evangelist/petpooja, which states it only scrapes
-// publicly-browsable material, no credentials) shows a nested envelope:
-// { app_key, app_secret, access_token, orderinfo: { OrderInfo: {
-// Restaurant: {details:{...}}, Customer: {details:{...}}, Order:
-// {details:{...}}, OrderItem: [...], Tax: [...], Discount: [...] } } }
-// — which is what's built below, since a wrong envelope shape is a total
-// rejection while a wrong optional field is usually just ignored.
-// BUT: that same reconstruction also lists a *different* save_order URL
-// (47pfzh5sf2...) than the one Petpooja's own PDF explicitly gives in Step 3
-// (qle1yy2ydc..., used in PETPOOJA_SAVE_ORDER_URL) — so it's demonstrably
-// not fully current/accurate either. Field names inside OrderItem/Tax use
-// the PDF's own confirmed names (id/name/price/final_price/.../item_tax
-// id/name/tax_percentage/amount) since that part IS directly confirmed by
-// Petpooja; only the outer envelope and a few Order-level fields
-// (dc_tax_amount, pc_tax_amount) come from the reconstruction.
-// VERIFY THIS FIRST once real sandbox credentials exist — a raw test call
-// against save_order and reading the actual response is worth more than
-// anything written here.
+// ENVELOPE SHAPE — confirmed by Petpooja support (2026-10-01), after days of
+// save_order returning {"success":"1", orderID:""} with nothing ever showing
+// in Order Listing. OrderItem and Tax are NOT bare arrays: they are objects
+// wrapping a "details" array, exactly like Restaurant/Customer/Order. Sending
+// bare arrays passes their API gateway (hence success:1) but the POS-side
+// parser reads OrderItem.details, gets undefined, and silently drops the
+// order — blank orderID is the only symptom. There is no "Discount" key;
+// order-level discount goes in Order.details.discount_total/discount_type.
+// "udid" and "device_type" sit on orderinfo, as siblings of OrderInfo.
 function buildSaveOrderPayload(order, restaurant, customer, callbackUrl, menuItemsById) {
   const petpooja = restaurant.posIntegration.petpooja;
   const { datePart, timePart, combined } = formatDateTime(order.scheduledFor || order.createdAt);
@@ -164,16 +172,7 @@ function buildSaveOrderPayload(order, restaurant, customer, callbackUrl, menuIte
     buildOrderItemPayload(item, menuItemsById[String(item.menuItem)], order)
   );
 
-  const taxDetails = splitIntoCgstSgst(order.pricing.taxAmount, order.pricing.taxPercentage).map(
-    (t) => ({
-      id: t.id,
-      title: t.name,
-      type: "P",
-      price: `${t.taxPercentage}%`,
-      tax: String(t.amount),
-      restaurant_liable_amt: String(t.amount),
-    })
-  );
+  const taxDetails = aggregateTaxDetails(orderItems);
 
   // Petpooja's "Total" should only be the amount due to the restaurant —
   // deliveryFee (paid to Flash), platformFee and tip (ours/the rider's) are
@@ -216,15 +215,24 @@ function buildSaveOrderPayload(order, restaurant, customer, callbackUrl, menuIte
             preorder_date: datePart,
             preorder_time: timePart,
             service_charge: "0",
+            sc_tax_amount: "0",
             delivery_charges: String(order.pricing.deliveryFee || 0),
             dc_tax_percentage: "0",
             dc_tax_amount: "0",
             packing_charges: String(order.pricing.packagingCharge || 0),
             pc_tax_percentage: String(order.pricing.taxPercentage || 0),
             pc_tax_amount: String(pcTaxAmount),
+            // Packing charge is the restaurant's, so its GST is theirs too.
+            pc_gst_details: [
+              { gst_liable: "vendor", amount: "0" },
+              { gst_liable: "restaurant", amount: String(pcTaxAmount) },
+            ],
             order_type: ORDER_TYPE_MAP[order.orderType] || "H",
             advanced_order: order.scheduledFor ? "Y" : "N",
+            urgent_order: false,
             payment_type: order.paymentMethod === "cod" ? "COD" : "ONLINE",
+            table_no: "",
+            no_of_persons: "0",
             discount_total: String(round2(order.pricing.discount)),
             discount_type: "F",
             tax_total: String(order.pricing.taxAmount),
@@ -232,17 +240,15 @@ function buildSaveOrderPayload(order, restaurant, customer, callbackUrl, menuIte
             description: order.items.map((i) => i.specialInstructions).filter(Boolean).join("; "),
             created_on: combined,
             // 0 = third-party rider — this platform dispatches Flash, never its own riders.
-            enable_delivery: order.orderType === "delivery" ? "0" : "1",
+            enable_delivery: order.orderType === "delivery" ? 0 : 1,
             callback_url: callbackUrl,
-            urgent_order: false,
           },
         },
-        OrderItem: orderItems,
-        Tax: taxDetails,
-        // PDF explicitly says to avoid a per-item/order discount object and
-        // use Order.details.discount_total/discount_type instead — left empty.
-        Discount: [],
+        OrderItem: { details: orderItems },
+        Tax: { details: taxDetails },
       },
+      udid: "",
+      device_type: "Web",
     },
   };
 }
