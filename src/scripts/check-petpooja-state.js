@@ -6,7 +6,7 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 
-const restID = process.argv[2] || "t4pqh7yeaj";
+const restID = process.argv[2] || "wjdmg6hr1o";
 
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 15000 });

@@ -10,7 +10,7 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 
-const restID = process.argv[2] || "t4pqh7yeaj";
+const restID = process.argv[2] || "wjdmg6hr1o";
 const APPLY = process.argv.includes("--apply");
 
 // Names drift between the two systems in predictable ways: "(2 Pcs)",
