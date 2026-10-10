@@ -11,6 +11,9 @@ const getAvailableCoupons = async (req, res, next) => {
 
     const filter = {
       isActive: true,
+      // Secret coupons are omitted from the list but still validate on
+      // /coupons/validate, so a customer given the code can redeem it.
+      isSecret: { $ne: true },
       validFrom: { $lte: now },
       validUntil: { $gte: now },
       $or: [

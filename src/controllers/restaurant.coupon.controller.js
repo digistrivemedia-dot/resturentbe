@@ -34,6 +34,7 @@ const createCoupon = async (req, res, next) => {
       applicableItems,
       applicableCuisines,
       applicablePaymentMethods,
+      isSecret,
     } = req.body;
 
     // Check if code already exists
@@ -59,6 +60,7 @@ const createCoupon = async (req, res, next) => {
       applicableItems: applicableItems || [],
       applicableCuisines,
       applicablePaymentMethods,
+      isSecret: !!isSecret,
       createdBy: req.user._id,
     });
 
@@ -94,6 +96,7 @@ const updateCoupon = async (req, res, next) => {
       "applicableCuisines",
       "applicablePaymentMethods",
       "isActive",
+      "isSecret",
     ];
 
     for (const field of allowedFields) {

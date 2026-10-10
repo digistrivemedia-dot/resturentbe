@@ -71,6 +71,14 @@ const couponSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Hidden from the customer's "apply coupon" list, but still redeemable by
+    // anyone who types the code — for codes handed to specific customers.
+    // getAvailableCoupons filters on $ne: true, so coupons created before
+    // this field existed stay visible without a migration.
+    isSecret: {
+      type: Boolean,
+      default: false,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

@@ -20,6 +20,9 @@ const PAYMENT_STATUS = {
 const COUPON_TYPE = {
   PERCENTAGE: "percentage",
   FLAT: "flat",
+  // value is always 0 — the discount equals the delivery fee, resolved at
+  // order time once the fee is known (order.controller.js).
+  FREE_DELIVERY: "free_delivery",
 };
 
 const COUPON_SCOPE = {

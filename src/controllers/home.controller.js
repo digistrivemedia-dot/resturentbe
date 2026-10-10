@@ -101,6 +101,9 @@ const getHomeFeed = async (req, res, next) => {
         const coupons = await Coupon.find({
           restaurant: { $in: restaurantIds },
           isActive: true,
+          // Secret coupons must not be advertised on food cards — the whole
+          // document (code included) is returned to the client below.
+          isSecret: { $ne: true },
           validUntil: { $gt: now },
         }).lean();
 

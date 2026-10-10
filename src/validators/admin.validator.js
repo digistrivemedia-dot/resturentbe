@@ -1,4 +1,5 @@
 const { body } = require("express-validator");
+const { COUPON_TYPE } = require("../utils/constants");
 
 const onboardRestaurantValidator = [
   body("owner.name").notEmpty().withMessage("Owner name is required"),
@@ -9,7 +10,7 @@ const onboardRestaurantValidator = [
 const createCouponValidator = [
   body("code").notEmpty().withMessage("Coupon code is required"),
   body("title").notEmpty().withMessage("Coupon title is required"),
-  body("type").isIn(["percentage", "flat"]).withMessage("Invalid coupon type"),
+  body("type").isIn(Object.values(COUPON_TYPE)).withMessage("Invalid coupon type"),
   body("value").isNumeric().withMessage("Coupon value is required"),
   body("validUntil").notEmpty().withMessage("Valid until date is required"),
 ];
