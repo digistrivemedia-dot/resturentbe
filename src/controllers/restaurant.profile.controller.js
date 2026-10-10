@@ -20,7 +20,6 @@ const updateProfile = async (req, res, next) => {
       "name",
       "description",
       "cuisines",
-      "timing",
       "weeklyHours",
       "costForTwo",
       "categories",
@@ -37,6 +36,14 @@ const updateProfile = async (req, res, next) => {
       if (req.body[field] !== undefined) {
         restaurant[field] = req.body[field];
       }
+    }
+
+    // timing is a nested subdocument and gets partial updates — the TopBar
+    // open/close toggle sends only { timing: { isOpen } }. Overwriting would
+    // wipe openTime/closeTime/offDays, so merge like address/contact below.
+    if (req.body.timing !== undefined) {
+      const existing = restaurant.timing?.toObject?.() || restaurant.timing || {};
+      restaurant.timing = { ...existing, ...req.body.timing };
     }
 
     // address/contact are nested subdocuments — merge onto the existing values

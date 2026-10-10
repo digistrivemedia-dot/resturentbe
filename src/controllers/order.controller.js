@@ -85,6 +85,13 @@ const placeOrder = async (req, res, next) => {
     if (!restaurant || restaurant.status !== "active") {
       throw new ApiError(400, "Restaurant is not available");
     }
+    // The open/close toggle (restaurant TopBar, or Petpooja's Update Store
+    // Status webhook) is only meaningful if it actually blocks orders.
+    // Scheduled orders are still allowed: the restaurant is closed *now*, not
+    // at the time the order is for.
+    if (restaurant.timing?.isOpen === false && !scheduledFor) {
+      throw new ApiError(400, "The restaurant is currently closed and not accepting orders");
+    }
 
     // 2. Validate and calculate items server-side
     let subtotal = 0;
