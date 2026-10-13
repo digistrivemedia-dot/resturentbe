@@ -178,6 +178,17 @@ const newOrder = (over = {}) => ({
     "external_order_id must be sent blank, per Petpooja's blueprint"
   );
 
+  // Update Order Status field names are counter-intuitive and easy to get
+  // wrong: our order number is clientorderID, orderID must be blank, and the
+  // reason is camelCase on this one endpoint. Getting any of them wrong makes
+  // the cancellation silently fail to match an order.
+  assert.ok(/clientorderID: order\.orderNumber/.test(petpooja),
+    "cancel must send our order number as clientorderID");
+  assert.ok(/orderID: ""/.test(petpooja),
+    "cancel must send orderID blank — it is Petpooja's own id, deprecated");
+  assert.ok(/cancelReason:/.test(petpooja) && !/cancel_reason:/.test(petpooja),
+    "cancel must use cancelReason (camelCase), not cancel_reason");
+
   console.log("ok — dispatch fires once from either trigger, COD stays manual, POS push failures alert, rider mirrors to POS");
 })().catch((e) => {
   Module._load = realLoad;

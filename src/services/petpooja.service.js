@@ -421,9 +421,18 @@ async function cancelOrder(restaurant, order, cancelReason) {
       app_secret: APP_SECRET,
       access_token: petpoojaCreds.accessToken,
       restID: petpoojaCreds.restID,
-      orderID: order.orderNumber,
+      // Field names are exactly as their blueprint specifies, and they are
+      // counter-intuitive: OUR order number goes in clientorderID ("integrator
+      // partner order id"), while orderID is Petpooja's own id and must be sent
+      // BLANK ("will be deprecated soon"). Sending our number as orderID with
+      // no clientorderID — as this did originally — gives them nothing to match
+      // on, so the cancellation silently fails to find the order.
+      orderID: "",
+      clientorderID: order.orderNumber,
+      // camelCase, not cancel_reason. Save Order uses snake_case throughout;
+      // this one endpoint does not. Their inconsistency, mirrored deliberately.
+      cancelReason: cancelReason || "",
       status: "-1",
-      cancel_reason: cancelReason || "",
     },
     { timeout: 10000 }
   );

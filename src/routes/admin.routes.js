@@ -10,7 +10,6 @@ const adminLog = require("../middlewares/adminLog.middleware");
 // Validators
 const {
   onboardRestaurantValidator,
-  createCouponValidator,
   createBannerValidator,
   sendNotificationValidator,
   updateSettingsValidator,
@@ -40,12 +39,6 @@ const {
   getOrderById,
   processRefund,
 } = require("../controllers/admin.order.controller");
-const {
-  getCoupons,
-  createCoupon,
-  updateCoupon,
-  deleteCoupon,
-} = require("../controllers/admin.coupon.controller");
 const {
   getBanners,
   createBanner,
@@ -115,11 +108,9 @@ router.get("/orders", getOrders);
 router.get("/orders/:id", getOrderById);
 router.put("/orders/:id/refund", ...processRefundValidator, validate, adminLog("refunded", "order"), processRefund);
 
-// Coupons
-router.get("/coupons", getCoupons);
-router.post("/coupons", ...createCouponValidator, validate, adminLog("created", "coupon"), createCoupon);
-router.put("/coupons/:id", adminLog("updated", "coupon"), updateCoupon);
-router.delete("/coupons/:id", adminLog("deleted", "coupon"), deleteCoupon);
+// Coupons are created by restaurant owners only — see restaurant.routes.js.
+// The admin-side coupon module was removed deliberately; there were no
+// platform-scope coupons in use.
 
 // Banners (CMS)
 router.get("/banners", getBanners);
