@@ -15,6 +15,7 @@ const { getIo } = require("../socket");
 const { createRazorpayOrder, verifyPaymentSignature } = require("../services/razorpay.service");
 const { cancelTask, checkServiceability, geocodeAddress } = require("../services/flash.service");
 const petpoojaService = require("../services/petpooja.service");
+const notifyRestaurantUrgent = require("../utils/notifyRestaurantUrgent");
 const { isCategoryAvailableNow } = require("../utils/categoryAvailability");
 const notifyAdmin = require("../utils/notifyAdmin");
 
@@ -28,15 +29,61 @@ async function pushOrderToPetpoojaIfLinked(order, restaurant, customer) {
   if (!restaurant.posIntegration?.petpooja?.isLinked) return;
 
   const callbackUrl = `${process.env.BASE_URL}/api/v1/webhooks/petpooja/order-callback`;
+  let failureReason = null;
   try {
     const result = await petpoojaService.saveOrder(order, restaurant, customer, callbackUrl);
-    order.petpooja = { ...(order.petpooja || {}), pushedAt: new Date(), pushStatus: "success" };
-    console.log(`[Petpooja] Order ${order.orderNumber} pushed:`, JSON.stringify(result));
+    // In sandbox, success:"1" with a BLANK orderID meant the order was silently
+    // dropped — their gateway accepted it, their POS parser rejected it. That
+    // was caused by the wrong envelope shape, which is now fixed, and orders
+    // are confirmed arriving on the production POS.
+    //
+    // So a blank orderID is treated as UNCONFIRMED, not failed: only success
+    // !== "1" (or a thrown error) raises the alarm. Marking it failed would
+    // fire "order did not reach your POS" on every single order if Petpooja
+    // simply doesn't echo an id back — and an alert that cries wolf is worse
+    // than no alert, since staff stop reading it. Grep the logs for
+    // "no POS order id" to see whether they actually return one; if they do,
+    // this can be tightened to require it.
+    const acceptedId = result?.orderID || result?.orderId;
+    if (String(result?.success) === "1") {
+      order.petpooja = {
+        ...(order.petpooja || {}),
+        pushedAt: new Date(),
+        pushStatus: "success",
+        ...(acceptedId ? { posOrderId: String(acceptedId) } : {}),
+      };
+      if (acceptedId) {
+        console.log(`[Petpooja] Order ${order.orderNumber} pushed → POS id ${acceptedId}`);
+      } else {
+        console.warn(
+          `[Petpooja] Order ${order.orderNumber} accepted but no POS order id returned — verify it appears in Order Listing:`,
+          JSON.stringify(result)
+        );
+      }
+    } else {
+      failureReason = result?.message || "Petpooja rejected the order";
+      order.petpooja = { ...(order.petpooja || {}), pushStatus: "failed", pushFailedReason: failureReason };
+      console.error(`[Petpooja] Push rejected for ${order.orderNumber}: ${failureReason}`, JSON.stringify(result));
+    }
   } catch (err) {
+    failureReason = err.message;
     order.petpooja = { ...(order.petpooja || {}), pushStatus: "failed", pushFailedReason: err.message };
     console.error(`[Petpooja] Push failed for order ${order.orderNumber}:`, err.message);
   }
   await order.save();
+
+  // The order is in our database and the customer is waiting, but nothing is
+  // on the POS — so nobody is cooking it. With staff working off Petpooja
+  // instead of our dashboard, this has to reach a human directly.
+  if (failureReason) {
+    await notifyRestaurantUrgent({
+      restaurant,
+      order,
+      title: "Order did NOT reach your POS",
+      message: `Order #${order.orderNumber} did not reach Petpooja — enter it manually. Reason: ${failureReason}`,
+      event: "petpooja_push_failed",
+    });
+  }
 }
 
 // Statuses where the customer can cancel outright — no kitchen/rider

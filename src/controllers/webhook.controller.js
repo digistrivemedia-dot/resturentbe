@@ -9,6 +9,9 @@ const MenuItem = require("../models/MenuItem");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
 const notifyAdmin = require("../utils/notifyAdmin");
+const notifyRestaurantUrgent = require("../utils/notifyRestaurantUrgent");
+const { dispatchFlashRider } = require("../services/dispatch.service");
+const petpoojaService = require("../services/petpooja.service");
 
 // Flash calls our webhook with "Authorization: Bearer <FLASH_WEBHOOK_TOKEN>" —
 // configured in the Flash dashboard's Configure Webhook section.
@@ -146,6 +149,24 @@ const handleFlashWebhook = async (req, res) => {
 
     order.markModified("deliveryTracking");
     await order.save();
+
+    // Mirror the rider onto the POS so the merchant sees who is delivering and
+    // how far along it is, the same way their Swiggy/Zomato integration does.
+    // Strictly advisory — a failure here changes nothing about the order or the
+    // delivery, so it never throws out of the webhook.
+    try {
+      const restaurant = await Restaurant.findById(order.restaurant);
+      if (restaurant?.posIntegration?.petpooja?.isLinked) {
+        const result = await petpoojaService.updateRiderStatus(order, restaurant, status_code);
+        if (result?.skipped) {
+          console.log(`[Petpooja Rider] ${order.orderNumber} skipped — ${result.skipped}`);
+        } else {
+          console.log(`[Petpooja Rider] ${order.orderNumber} → ${status_code}:`, JSON.stringify(result));
+        }
+      }
+    } catch (riderErr) {
+      console.error(`[Petpooja Rider] Failed for ${order.orderNumber}: ${riderErr.message}`);
+    }
 
     emitOrderUpdate(order.restaurant, order.customer, order);
     if (riderLocation) {
@@ -287,7 +308,11 @@ const handlePetpoojaOrderCallback = async (req, res) => {
 
     // orderID sent with Save Order was our own order.orderNumber — that's
     // the value Petpooja should echo back here.
-    const order = await Order.findOne({ orderNumber: orderID }).populate("customer", "name");
+    // phone is required: dispatchFlashRider below checks it, and createTask
+    // sends it as Flash's drop_details.contact_number. Populating only "name"
+    // (as this did originally, when the callback never dispatched) makes every
+    // rider request fail with "missing the customer's phone number".
+    const order = await Order.findOne({ orderNumber: orderID }).populate("customer", "name phone email");
     if (!order) {
       console.warn(`[Petpooja Webhook] Order not found for orderID/restID: ${orderID} / ${restID}`);
       return;
@@ -319,6 +344,43 @@ const handlePetpoojaOrderCallback = async (req, res) => {
       }
     } else {
       console.warn(`[Petpooja Webhook] Unrecognized status code "${status}" — stored raw, order.status unchanged`);
+    }
+
+    // Dispatch a Flash rider when the kitchen marks the food ready on the POS.
+    // This is the whole point of the integration for delivery orders: once
+    // Petpooja is live the restaurant stops using our dashboard, so the
+    // dashboard's "Mark Ready" button — previously the only thing that
+    // requested a rider — never gets pressed.
+    //
+    // Fires on 5 (Food Ready) AND 4 (Dispatch): staff who tap Dispatch without
+    // Food Ready would otherwise leave the order at out_for_delivery with no
+    // rider at all. dispatchFlashRider is idempotent on taskId, so whichever
+    // arrives first wins and the second is a no-op.
+    if (
+      order.orderType === "delivery" &&
+      (String(status) === "5" || String(status) === "4") &&
+      !order.deliveryTracking?.flash?.taskId
+    ) {
+      // The callback is public and unauthenticated, so there is no
+      // req.restaurant here — Flash needs the restaurant's phone and address
+      // for the pickup leg, so load it.
+      const restaurant = await Restaurant.findById(order.restaurant);
+      if (restaurant) {
+        const result = await dispatchFlashRider(order, restaurant, { source: "petpooja" });
+        if (result.outcome === "blocked" || result.outcome === "failed") {
+          // Nobody is watching our dashboard any more, so a silent failure
+          // here means no rider and no one knowing until the customer calls.
+          await notifyRestaurantUrgent({
+            restaurant,
+            order,
+            title: "Rider not assigned",
+            message: `Order #${order.orderNumber}: no delivery rider was assigned. ${result.reason || ""}`.trim(),
+            event: "dispatch_failed",
+          });
+        }
+      } else {
+        console.error(`[Petpooja Webhook] Restaurant ${order.restaurant} not found — cannot dispatch rider for ${order.orderNumber}`);
+      }
     }
 
     await order.save();

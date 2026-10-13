@@ -2,7 +2,12 @@
 // form) so username/password never end up in a logged URL.
 const SMARTPING_URL = "https://pgapi.smartping.ai/fe/api/v1/message";
 
-const sendSms = async ({ to, text }) => {
+// dltContentId defaults to the OTP template. India's DLT rules reject any text
+// that doesn't match the registered template for the id used, so a different
+// kind of message (e.g. the delivery-problem alert) needs its own registered
+// template and its own id passed in here — reusing the OTP id would be
+// rejected by the gateway.
+const sendSms = async ({ to, text, dltContentId }) => {
   const auth = Buffer.from(
     `${process.env.SMARTPING_USERNAME}:${process.env.SMARTPING_PASSWORD}`
   ).toString("base64");
@@ -15,7 +20,7 @@ const sendSms = async ({ to, text }) => {
       Authorization: `Basic ${auth}`,
     },
     body: JSON.stringify({
-      extra: { dltContentId: process.env.SMARTPING_DLT_CONTENT_ID },
+      extra: { dltContentId: dltContentId || process.env.SMARTPING_DLT_CONTENT_ID },
       message: { recipient: to, text },
       sender: process.env.SMARTPING_SENDER_ID,
       unicode: false,

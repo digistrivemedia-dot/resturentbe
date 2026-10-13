@@ -4,7 +4,8 @@ const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
-const { createTask, cancelTask } = require("../services/flash.service");
+const { cancelTask } = require("../services/flash.service");
+const { dispatchFlashRider } = require("../services/dispatch.service");
 const petpoojaService = require("../services/petpooja.service");
 
 function emitOrderUpdate(restaurantId, order) {
@@ -395,78 +396,11 @@ const updateOrderStatus = async (req, res, next) => {
       order.deliveryTracking.deliveredAt = new Date();
     }
 
-    // Auto-dispatch a Flash rider once the food is ready (delivery orders only)
-    if (status === ORDER_STATUS.READY && order.orderType === "delivery") {
-      order.deliveryTracking = order.deliveryTracking || {};
-
-      const missingProfileFields = [];
-      if (!req.restaurant.contact?.phone) missingProfileFields.push("the restaurant's contact phone number (Settings > Location & Hours)");
-      if (!req.restaurant.address?.fullAddress) missingProfileFields.push("the restaurant's address (Settings > Location & Hours)");
-      // drop_details.contact_number comes from the customer's own account phone —
-      // accounts created via Google/OTP sign-in never require one, so this is a
-      // real, expected gap for some customers, not a code bug (confirmed against
-      // Flash's own validation error).
-      if (!order.customer?.phone) missingProfileFields.push("the customer's phone number on their account");
-      // Checkout doesn't require a pinned map location on saved addresses (by
-      // design — see checkout page), so an order can reach here with a delivery
-      // address that has no lat/lng. Flash's drop_details.latitude/longitude
-      // would then be undefined and get rejected the same way as the other
-      // missing-field cases above.
-      if (typeof order.deliveryAddress?.lat !== "number" || typeof order.deliveryAddress?.lng !== "number") {
-        missingProfileFields.push("a map location on the customer's delivery address");
-      }
-
-      if (order.paymentStatus !== "paid") {
-        // Flash's 3PL service rejects unpaid (COD) orders outright — no point calling the API
-        console.warn(`[Flash] Skipped dispatch for ${order.orderNumber} — order is COD/unpaid, Flash requires online payment`);
-        order.deliveryTracking.flash = {
-          status: "CANCELLED",
-          dispatchFailedReason: "Cash on Delivery orders aren't supported by Flash — arrange delivery manually",
-        };
-      } else if (missingProfileFields.length > 0) {
-        // Flash's API hard-rejects the request when these are blank (confirmed via
-        // its own validation error), so check before calling rather than after.
-        const reason = `Missing ${missingProfileFields.join(" and ")} — dispatch can't be requested until this is set, then retry`;
-        console.warn(`[Flash] Skipped dispatch for ${order.orderNumber} — ${reason}`);
-        order.deliveryTracking.flash = {
-          status: "CANCELLED",
-          dispatchFailedReason: reason,
-        };
-      } else {
-        console.log(`[Flash] Dispatching rider for ${order.orderNumber} (restaurant: ${req.restaurant.name})`);
-        try {
-          const flashResult = await createTask(order, req.restaurant, order.customer);
-          console.log(`[Flash] createTask response for ${order.orderNumber}:`, JSON.stringify(flashResult));
-
-          if (flashResult.status) {
-            order.deliveryTracking.flash = {
-              taskId: flashResult.TaskId || flashResult.taskId,
-              status: flashResult.Status_code,
-              dispatchedAt: new Date(),
-            };
-            console.log(`[Flash] Task created for ${order.orderNumber}: ${order.deliveryTracking.flash.taskId}`);
-          } else {
-            // Validation failures come back as msg: { field: "error text" } rather
-            // than a single message string — surface those too, not just a generic
-            // fallback that would otherwise mislabel a bad payload as "no rider".
-            const reason = flashResult.message
-              || (flashResult.msg && typeof flashResult.msg === "object"
-                    ? Object.values(flashResult.msg).join("; ")
-                    : flashResult.msg)
-              || "Rider not available";
-            order.deliveryTracking.flash = {
-              status: flashResult.Status_code || "CANCELLED",
-              dispatchFailedReason: reason,
-            };
-            console.warn(`[Flash] Task creation failed for ${order.orderNumber}: ${reason}`);
-          }
-        } catch (flashErr) {
-          order.deliveryTracking.flash = {
-            dispatchFailedReason: flashErr.message,
-          };
-          console.error(`[Flash] createTask error for order ${order.orderNumber}:`, flashErr.message);
-        }
-      }
+    // Auto-dispatch a Flash rider once the food is ready. Petpooja's order
+    // callback calls the same function when the kitchen taps "Food Ready" on
+    // the POS, so both routes apply identical guards — see dispatch.service.js.
+    if (status === ORDER_STATUS.READY) {
+      await dispatchFlashRider(order, req.restaurant, { source: "dashboard" });
     }
 
     await order.save();

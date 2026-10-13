@@ -7,6 +7,7 @@ const APP_KEY = process.env.PETPOOJA_APP_KEY;
 const APP_SECRET = process.env.PETPOOJA_APP_SECRET;
 const SAVE_ORDER_URL = process.env.PETPOOJA_SAVE_ORDER_URL;
 const UPDATE_STATUS_URL = process.env.PETPOOJA_UPDATE_STATUS_URL;
+const RIDER_STATUS_URL = process.env.PETPOOJA_RIDER_STATUS_URL;
 
 const round2 = (n) => Math.round((n || 0) * 100) / 100;
 
@@ -429,9 +430,72 @@ async function cancelOrder(restaurant, order, cancelReason) {
   return res.data;
 }
 
+// Flash status_code → Petpooja rider status. Petpooja accepts exactly four
+// values (rider-assigned/rider-arrived/pickedup/delivered) and 400s on
+// anything else, so unmapped Flash codes are skipped rather than guessed.
+//
+// ALLOTTED → rider-assigned and DISPATCHED → pickedup follow Flash's own
+// semantics: ALLOTTED means a rider is heading to the restaurant, DISPATCHED
+// means the food has actually been picked up (see FLASH_TO_ORDER_STATUS in
+// webhook.controller.js — same distinction).
+const FLASH_TO_PETPOOJA_RIDER_STATUS = {
+  ALLOTTED: "rider-assigned",
+  ARRIVED: "rider-arrived",
+  DISPATCHED: "pickedup",
+  DELIVERED: "delivered",
+};
+
+// POST Rider Information webhook — tells the POS who is delivering, so the
+// merchant sees rider name/phone and delivery progress on their own screen
+// instead of a blank delivery row. This is what makes an integration look
+// like the Swiggy/Zomato ones the merchant is used to.
+//
+// Payload confirmed against Petpooja's own blueprint (onlineorderingapisv210,
+// "Rider Information - Webhook"): order_id is OUR order number (their
+// "third party order id"), outlet_id is the restID, and external_order_id
+// must be sent blank — their docs say so explicitly.
+//
+// Advisory only: a failure here never affects the order or the delivery, so
+// callers log and move on rather than retrying.
+async function updateRiderStatus(order, restaurant, flashStatusCode) {
+  const status = FLASH_TO_PETPOOJA_RIDER_STATUS[flashStatusCode];
+  if (!status) return { skipped: `unmapped Flash status ${flashStatusCode}` };
+
+  if (!RIDER_STATUS_URL) return { skipped: "PETPOOJA_RIDER_STATUS_URL not configured" };
+
+  const petpoojaCreds = await resolvePetpoojaCredentials(restaurant);
+  if (!petpoojaCreds?.restID || !petpoojaCreds?.accessToken) {
+    return { skipped: "restaurant is not linked to Petpooja" };
+  }
+
+  const rider = order.deliveryTracking?.flash || {};
+  // rider_name/rider_phone_number are both required by the spec. Flash doesn't
+  // always include them on every status push, so fall back to whatever was
+  // stored on an earlier push rather than sending an empty object.
+  const res = await axios.post(
+    RIDER_STATUS_URL,
+    {
+      app_key: APP_KEY,
+      app_secret: APP_SECRET,
+      access_token: petpoojaCreds.accessToken,
+      order_id: order.orderNumber,
+      outlet_id: petpoojaCreds.restID,
+      status,
+      rider_data: {
+        rider_name: rider.riderName || "Delivery Partner",
+        rider_phone_number: rider.riderContact || "",
+      },
+      external_order_id: "",
+    },
+    { timeout: 10000 }
+  );
+  return res.data;
+}
+
 module.exports = {
   saveOrder,
   cancelOrder,
+  updateRiderStatus,
   resolvePetpoojaCredentials,
   buildSaveOrderPayload, // exported for the manual test-order verification step
   indexMenuCache,

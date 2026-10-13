@@ -176,6 +176,10 @@ const orderSchema = new mongoose.Schema(
       pushedAt: Date,
       pushStatus: { type: String, enum: ["success", "failed"] },
       pushFailedReason: String,
+      // Petpooja's own order id, echoed back by Save Order. A BLANK value in
+      // their response means the POS silently dropped the order even though
+      // success was "1", so pushStatus is only "success" when this is present.
+      posOrderId: String,
       lastCallbackStatus: String,
       lastCallbackAt: Date,
       cancelReason: String,
