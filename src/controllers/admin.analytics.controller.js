@@ -6,7 +6,7 @@ const SupportTicket = require("../models/SupportTicket");
 const PlatformSettings = require("../models/PlatformSettings");
 const ApiResponse = require("../utils/ApiResponse");
 const { ORDER_STATUS } = require("../utils/constants");
-const { buildPlatformOrderMatch, getPreviousPeriod, percentChange } = require("../utils/analyticsFilters");
+const { buildPlatformOrderMatch, getPreviousPeriod, percentChange, dateRangeMatch } = require("../utils/analyticsFilters");
 
 const round2 = (n) => Math.round((n || 0) * 100) / 100;
 const round1 = (n) => Math.round((n || 0) * 10) / 10;
@@ -32,8 +32,11 @@ function priorOrderCutoff(filters) {
   return filters.startDate ? new Date(filters.startDate) : new Date(0);
 }
 
+// Drops anything that isn't a valid id instead of throwing. Callers pass
+// values that can originate in a query string, and an invalid id used to
+// surface as a 500 across every endpoint.
 function toObjectIds(ids) {
-  return ids.map((id) => new mongoose.Types.ObjectId(id));
+  return ids.filter((id) => mongoose.Types.ObjectId.isValid(id)).map((id) => new mongoose.Types.ObjectId(id));
 }
 
 // City / single-restaurant filters aren't fields on Order — resolve them to a
@@ -42,6 +45,12 @@ function toObjectIds(ids) {
 // don't appear anywhere in platform analytics.
 async function resolveRestaurantIds(filters) {
   if (filters.restaurantId && filters.restaurantId !== "all") {
+    // A malformed id used to reach toObjectIds and throw "input must be a 24
+    // character hex string", 500-ing all seven endpoints. The UI only ever
+    // sends ids from its own dropdown, but a hand-edited query string
+    // shouldn't produce a server error. An empty list scopes the query to no
+    // restaurants, so the caller gets honest zeroes.
+    if (!mongoose.Types.ObjectId.isValid(filters.restaurantId)) return [];
     return [filters.restaurantId];
   }
   if (filters.city && filters.city !== "all") {
@@ -90,6 +99,11 @@ const getOverview = async (req, res, next) => {
     const commissionPct = await getCommissionPct();
 
     const restaurantScope = restaurantIds ? { _id: { $in: toObjectIds(restaurantIds) } } : {};
+    // Shared with the newRestaurants count below. Returns null when neither
+    // bound is a usable date, so the key is omitted rather than sent as {} —
+    // which Mongoose rejects with "Cast to date failed", 500-ing the endpoint
+    // and (because every section is gated on these KPIs) blanking the page.
+    const newRestaurantRange = dateRangeMatch(filters.startDate, filters.endDate);
 
     const [currentAgg, previousAgg, cancelAgg, ratingAgg, trend, activeRestaurants, newRestaurants] = await Promise.all([
       Order.aggregate([
@@ -115,9 +129,16 @@ const getOverview = async (req, res, next) => {
         { $match: allStatusMatch },
         { $group: { _id: null, total: { $sum: 1 }, cancelled: { $sum: { $cond: [{ $eq: ["$status", ORDER_STATUS.CANCELLED] }, 1, 0] } } } },
       ]),
+      // Order.rating has no "foodRating" field — it never has. Ratings live in
+      // rating.itemRatings[].rating (one per dish) and rating.deliveryRating.
+      // Querying the non-existent field matched nothing, so this KPI always
+      // read "No ratings yet" even with rated orders in the period.
+      // Each order is averaged across its own dishes first, then across
+      // orders, so a 10-dish order doesn't outweigh a 1-dish one.
       Order.aggregate([
-        { $match: { ...match, "rating.foodRating": { $exists: true, $ne: null } } },
-        { $group: { _id: null, avg: { $avg: "$rating.foodRating" }, count: { $sum: 1 } } },
+        { $match: { ...match, "rating.itemRatings.0": { $exists: true } } },
+        { $addFields: { orderRating: { $avg: "$rating.itemRatings.rating" } } },
+        { $group: { _id: null, avg: { $avg: "$orderRating" }, count: { $sum: 1 } } },
       ]),
       Order.aggregate([
         { $match: match },
@@ -131,13 +152,15 @@ const getOverview = async (req, res, next) => {
         { $sort: { _id: 1 } },
       ]),
       Restaurant.countDocuments({ ...restaurantScope, status: "active" }),
+      // An empty createdAt range ({}) makes Mongoose throw "Cast to date
+      // failed for value {}", 500-ing the whole endpoint — and because the
+      // page gates every section on these KPIs, the entire analytics screen
+      // renders blank. The UI always sends both dates, but the endpoint must
+      // not depend on that.
       Restaurant.countDocuments({
         ...restaurantScope,
         status: "active",
-        createdAt: {
-          ...(filters.startDate ? { $gte: new Date(filters.startDate) } : {}),
-          ...(filters.endDate ? { $lte: new Date(filters.endDate) } : {}),
-        },
+        ...(newRestaurantRange ? { createdAt: newRestaurantRange } : {}),
       }),
     ]);
 
@@ -436,31 +459,72 @@ const getDeliveryHealth = async (req, res, next) => {
     const match = buildPlatformOrderMatch({ ...filters, orderType: "delivery" }, restaurantIds);
 
     const [dispatch, timing] = await Promise.all([
+      // Count every ATTEMPTED dispatch, not just the successful ones. The old
+      // query matched taskId:{$exists:true} — which only a SUCCESSFUL dispatch
+      // has — and then looked for failures inside that set. A failed dispatch
+      // records dispatchFailedReason and no taskId, so it was filtered out
+      // before it could be counted: failedDispatches was structurally always
+      // 0 and the success rate always 100%. On live data it reported 100%
+      // when the true rate was 8 of 22.
+      //
+      // COD orders are deliberately excluded: they carry
+      // flash.status "MANUAL_DELIVERY" with neither field, because the
+      // restaurant's own riders handle them. They are not failed dispatches.
       Order.aggregate([
-        { $match: { ...match, "deliveryTracking.flash.taskId": { $exists: true } } },
+        {
+          $match: {
+            ...match,
+            $or: [
+              { "deliveryTracking.flash.taskId": { $exists: true, $nin: [null, ""] } },
+              { "deliveryTracking.flash.dispatchFailedReason": { $exists: true, $nin: [null, ""] } },
+            ],
+          },
+        },
         {
           $group: {
             _id: null,
             total: { $sum: 1 },
-            failed: { $sum: { $cond: [{ $ifNull: ["$deliveryTracking.flash.dispatchFailedReason", false] }, 1, 0] } },
+            // Mutually exclusive by construction (see dispatch.service.js: a
+            // failure replaces flash wholesale, leaving no taskId), so "no
+            // taskId" is the reliable failure test.
+            failed: { $sum: { $cond: [{ $ifNull: ["$deliveryTracking.flash.taskId", false] }, 0, 1] } },
           },
         },
       ]),
+      // Measure the DELIVERY leg, not the whole order lifecycle. This used to
+      // subtract createdAt, so it included checkout, kitchen prep and any time
+      // the order sat unattended — on live data that averaged 1867 minutes
+      // (31 hours) and was displayed as "Avg Delivery Time".
+      //
+      // Orders with no dispatch/pickup timestamp are excluded rather than
+      // falling back to createdAt: a smaller honest sample beats a number
+      // that silently means something else. The card is Flash-specific.
       Order.aggregate([
         { $match: { ...match, status: ORDER_STATUS.DELIVERED, "deliveryTracking.deliveredAt": { $exists: true } } },
-        { $addFields: { deliveryMinutes: { $divide: [{ $subtract: ["$deliveryTracking.deliveredAt", "$createdAt"] }, 60000] } } },
-        { $group: { _id: null, avgMinutes: { $avg: "$deliveryMinutes" } } },
+        {
+          $addFields: {
+            legStart: { $ifNull: ["$deliveryTracking.flash.dispatchedAt", "$deliveryTracking.pickedUpAt"] },
+          },
+        },
+        { $match: { legStart: { $ne: null } } },
+        { $addFields: { deliveryMinutes: { $divide: [{ $subtract: ["$deliveryTracking.deliveredAt", "$legStart"] }, 60000] } } },
+        // Guards against clock skew or a deliveredAt backfilled before dispatch.
+        { $match: { deliveryMinutes: { $gt: 0 } } },
+        { $group: { _id: null, avgMinutes: { $avg: "$deliveryMinutes" }, count: { $sum: 1 } } },
       ]),
     ]);
 
     const d = dispatch[0] || { total: 0, failed: 0 };
-    const tm = timing[0] || { avgMinutes: null };
+    const tm = timing[0] || { avgMinutes: null, count: 0 };
 
     return ApiResponse.send(res, 200, "Delivery health fetched", {
       totalDispatches: d.total,
       failedDispatches: d.failed,
       dispatchSuccessRatePct: d.total > 0 ? round1(((d.total - d.failed) / d.total) * 100) : null,
       avgDeliveryMinutes: tm.avgMinutes !== null && tm.avgMinutes !== undefined ? round1(tm.avgMinutes) : null,
+      // Lets the UI show the sample size instead of implying every delivery
+      // is represented in the average.
+      deliveryTimeSample: tm.count || 0,
     });
   } catch (error) {
     next(error);

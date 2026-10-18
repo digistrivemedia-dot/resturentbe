@@ -11,11 +11,8 @@ function buildOrderMatch(restaurantId, filters = {}) {
     restaurant: new mongoose.Types.ObjectId(restaurantId),
   };
 
-  if (startDate || endDate) {
-    match.createdAt = {};
-    if (startDate) match.createdAt.$gte = new Date(startDate);
-    if (endDate) match.createdAt.$lte = new Date(endDate);
-  }
+  const range = dateRangeMatch(startDate, endDate);
+  if (range) match.createdAt = range;
 
   if (!parseBool(includeCancelled)) {
     match.status = { $ne: ORDER_STATUS.CANCELLED };
@@ -36,6 +33,27 @@ function parseBool(v) {
   return v === true || v === "true" || v === "1";
 }
 
+// new Date("banana") yields an Invalid Date, which Mongoose rejects with
+// "Cast to date failed" — a 500 from a query string typo. Treat an
+// unparseable date as absent instead: the range simply isn't applied.
+function parseDate(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Builds a createdAt range, omitting the key entirely when neither bound is
+// usable — an empty {} is itself a cast error.
+function dateRangeMatch(startDate, endDate) {
+  const start = parseDate(startDate);
+  const end = parseDate(endDate);
+  if (!start && !end) return null;
+  const range = {};
+  if (start) range.$gte = start;
+  if (end) range.$lte = end;
+  return range;
+}
+
 // Platform-wide variant for admin analytics — no single restaurant is required;
 // optionally scoped to a specific set of restaurant ids (city or single-restaurant
 // filter resolves to this upstream, since city isn't a field on Order itself).
@@ -45,14 +63,15 @@ function buildPlatformOrderMatch(filters = {}, restaurantIds = null) {
   const match = {};
 
   if (restaurantIds) {
-    match.restaurant = { $in: restaurantIds.map((id) => new mongoose.Types.ObjectId(id)) };
+    match.restaurant = {
+      $in: restaurantIds
+        .filter((id) => mongoose.Types.ObjectId.isValid(id))
+        .map((id) => new mongoose.Types.ObjectId(id)),
+    };
   }
 
-  if (startDate || endDate) {
-    match.createdAt = {};
-    if (startDate) match.createdAt.$gte = new Date(startDate);
-    if (endDate) match.createdAt.$lte = new Date(endDate);
-  }
+  const range = dateRangeMatch(startDate, endDate);
+  if (range) match.createdAt = range;
 
   if (!parseBool(includeCancelled)) {
     match.status = { $ne: ORDER_STATUS.CANCELLED };
@@ -86,4 +105,4 @@ function percentChange(current, previous) {
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
-module.exports = { buildOrderMatch, buildPlatformOrderMatch, parseBool, getPreviousPeriod, percentChange };
+module.exports = { buildOrderMatch, buildPlatformOrderMatch, parseBool, parseDate, dateRangeMatch, getPreviousPeriod, percentChange };

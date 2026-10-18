@@ -19,6 +19,18 @@ const otpStore = new Map();
 // aren't blocked behind an inbox they can't access. Set via env, not code.
 const PLAY_REVIEW_EMAIL = process.env.PLAY_REVIEW_EMAIL?.toLowerCase();
 const PLAY_REVIEW_OTP = process.env.PLAY_REVIEW_OTP;
+// The mobile login screen now defaults to the PHONE tab, so a reviewer handed
+// email-only credentials lands on a field that strips the "@" out of what they
+// type. Accepting a review phone as well means the fixed OTP works whichever
+// tab they end up on. Optional — unset simply means email-only, as before.
+const PLAY_REVIEW_PHONE = process.env.PLAY_REVIEW_PHONE?.replace(/\D/g, "").slice(-10);
+
+function isPlayReviewAccount({ email, phone }) {
+  if (!PLAY_REVIEW_OTP) return false;
+  if (email && PLAY_REVIEW_EMAIL && email.toLowerCase() === PLAY_REVIEW_EMAIL) return true;
+  if (phone && PLAY_REVIEW_PHONE && String(phone).replace(/\D/g, "").slice(-10) === PLAY_REVIEW_PHONE) return true;
+  return false;
+}
 
 // Helper: set refresh token cookie
 const setRefreshCookie = (res, token) => {
@@ -151,8 +163,7 @@ const sendOtp = async (req, res, next) => {
     const { email, phone } = req.body;
     const identifier = phone || email;
 
-    const isReviewAccount =
-      email && PLAY_REVIEW_EMAIL && PLAY_REVIEW_OTP && email.toLowerCase() === PLAY_REVIEW_EMAIL;
+    const isReviewAccount = isPlayReviewAccount({ email, phone });
 
     // Generate 6-digit OTP (fixed, non-expiring for the review account)
     const otp = isReviewAccount ? PLAY_REVIEW_OTP : String(Math.floor(100000 + Math.random() * 900000));
