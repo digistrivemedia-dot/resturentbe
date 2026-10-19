@@ -1,8 +1,6 @@
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
 const User = require("../models/User");
-const MenuItem = require("../models/MenuItem");
-const MenuCategory = require("../models/MenuCategory");
 const Restaurant = require("../models/Restaurant");
 const Coupon = require("../models/Coupon");
 const Review = require("../models/Review");
@@ -16,7 +14,7 @@ const { createRazorpayOrder, verifyPaymentSignature } = require("../services/raz
 const { cancelTask, checkServiceability, geocodeAddress } = require("../services/flash.service");
 const petpoojaService = require("../services/petpooja.service");
 const notifyRestaurantUrgent = require("../utils/notifyRestaurantUrgent");
-const { isCategoryAvailableNow } = require("../utils/categoryAvailability");
+const priceOrderItems = require("../utils/priceOrderItems");
 const notifyAdmin = require("../utils/notifyAdmin");
 
 const LARGE_ORDER_THRESHOLD = 5000;
@@ -140,84 +138,9 @@ const placeOrder = async (req, res, next) => {
       throw new ApiError(400, "The restaurant is currently closed and not accepting orders");
     }
 
-    // 2. Validate and calculate items server-side
-    let subtotal = 0;
-    const validatedItems = [];
-
-    // Fetched once (not per-item) — a restaurant only has a handful of categories
-    const categoryDocs = await MenuCategory.find({ restaurant: restaurant._id }).lean();
-    const categoryDocMap = {};
-    categoryDocs.forEach((c) => { categoryDocMap[c.name] = c; });
-
-    for (const cartItem of items) {
-      const menuItem = await MenuItem.findById(cartItem.menuItemId);
-      if (!menuItem || menuItem.status !== "active" || !menuItem.isAvailable) {
-        throw new ApiError(400, `Item "${cartItem.name || "Unknown"}" is not available`);
-      }
-      if (!isCategoryAvailableNow(categoryDocMap[menuItem.category])) {
-        throw new ApiError(400, `"${menuItem.category}" is not available right now`);
-      }
-
-      // Determine base price (from variant or item)
-      let basePrice = menuItem.price;
-      let variantData = null;
-      if (cartItem.variant?.name) {
-        const matchedVariant = menuItem.variants?.find(
-          (v) => v.name === cartItem.variant.name
-        );
-        if (matchedVariant) {
-          basePrice = matchedVariant.price;
-          variantData = { name: matchedVariant.name, price: matchedVariant.price };
-        }
-      }
-
-      // Use discountedPrice if available
-      const effectivePrice = menuItem.discountedPrice && menuItem.discountedPrice < basePrice
-        ? menuItem.discountedPrice
-        : basePrice;
-
-      // Validate addons
-      let addonsTotal = 0;
-      const validatedAddons = [];
-      if (cartItem.addons?.length) {
-        for (const addon of cartItem.addons) {
-          // Find matching addon in the menu item's addonGroups
-          let matched = false;
-          for (const group of menuItem.addonGroups || []) {
-            const matchedAddon = group.addons?.find((a) => a.name === addon.name);
-            if (matchedAddon) {
-              addonsTotal += matchedAddon.price;
-              validatedAddons.push({
-                groupName: group.name,
-                name: matchedAddon.name,
-                price: matchedAddon.price,
-              });
-              matched = true;
-              break;
-            }
-          }
-          if (!matched) {
-            throw new ApiError(400, `Addon "${addon.name}" is not valid for "${menuItem.name}"`);
-          }
-        }
-      }
-
-      const quantity = cartItem.quantity || 1;
-      const itemTotal = (effectivePrice + addonsTotal) * quantity;
-      subtotal += itemTotal;
-
-      validatedItems.push({
-        menuItem: menuItem._id,
-        name: menuItem.name,
-        quantity,
-        price: effectivePrice,
-        variant: variantData,
-        addons: validatedAddons,
-        specialInstructions: cartItem.specialInstructions || "",
-        itemTotal,
-        isVeg: menuItem.isVeg,
-      });
-    }
+    // 2. Validate and calculate items server-side — shared with the dine-in POS
+    // (pos.controller.js) so both price identically. See utils/priceOrderItems.js.
+    const { validatedItems, subtotal } = await priceOrderItems(items, restaurant._id);
 
     // 4. Calculate delivery fee — real, distance-based cost from Flash when available,
     // falling back to the restaurant's flat fee if coordinates are missing or Flash errors.

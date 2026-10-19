@@ -106,6 +106,8 @@ const webhookRoutes = require("./routes/webhook.routes");
 app.use("/api/v1/webhooks", webhookRoutes);
 const deliveryRoutes = require("./routes/delivery.routes");
 app.use("/api/v1/delivery", deliveryRoutes);
+const posRoutes = require("./routes/pos.routes");
+app.use("/api/v1/pos", posRoutes);
 
 // 404 handler
 app.use((req, res) => {

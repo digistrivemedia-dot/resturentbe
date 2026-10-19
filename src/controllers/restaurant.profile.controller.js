@@ -57,6 +57,14 @@ const updateProfile = async (req, res, next) => {
       const existing = restaurant.contact?.toObject?.() || restaurant.contact || {};
       restaurant.contact = { ...existing, ...req.body.contact };
     }
+    // Only upiId is editable here — it's what the dine-in bill QR pays into.
+    // The rest of bankDetails (account number, IFSC) stays admin-only, since
+    // that's where platform payouts go and an owner shouldn't redirect those
+    // from their own dashboard.
+    if (req.body.bankDetails?.upiId !== undefined) {
+      const existing = restaurant.bankDetails?.toObject?.() || restaurant.bankDetails || {};
+      restaurant.bankDetails = { ...existing, upiId: String(req.body.bankDetails.upiId).trim() };
+    }
 
     await restaurant.save();
 

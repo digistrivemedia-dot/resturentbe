@@ -23,7 +23,7 @@ const initSocket = (httpServer) => {
       socket.userId = userId;
 
       const restaurant = await Restaurant.findOne({
-        $or: [{ owner: userId }, { managers: userId }],
+        $or: [{ owner: userId }, { managers: userId }, { staff: userId }],
       }).select("_id");
 
       if (restaurant) {
@@ -41,6 +41,10 @@ const initSocket = (httpServer) => {
     }
     if (socket.userId) {
       socket.join(`customer:${socket.userId}`);
+      // Role-neutral per-user room. `customer:<id>` happens to work for any
+      // user, but emitting a waiter's "food ready" alert to a room called
+      // "customer:" is the kind of thing nobody can decode at 3am.
+      socket.join(`user:${socket.userId}`);
     }
 
     socket.on("disconnect", () => {});

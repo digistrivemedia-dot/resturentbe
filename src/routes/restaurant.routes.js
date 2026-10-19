@@ -94,6 +94,19 @@ const {
   markNotificationRead,
   markAllNotificationsRead,
 } = require("../controllers/restaurant.notification.controller");
+const {
+  getTables,
+  addTable,
+  bulkAddTables,
+  updateTable,
+  deleteTable,
+} = require("../controllers/restaurant.table.controller");
+const {
+  getStaff,
+  addStaff,
+  updateStaff,
+  removeStaff,
+} = require("../controllers/restaurant.staff.controller");
 
 // Apply auth, role, and restaurant middleware to all routes
 router.use(auth, role("restaurant_owner"), restaurantMiddleware);
@@ -154,6 +167,19 @@ router.put("/profile", updateProfile);
 router.put("/change-password", changePassword);
 router.put("/settings", updateSettings);
 router.get("/payouts", getPayouts);
+
+// Dine-in tables (floor plan)
+router.get("/tables", getTables);
+router.post("/tables", addTable);
+router.post("/tables/bulk", bulkAddTables);
+router.put("/tables/:id", updateTable);
+router.delete("/tables/:id", deleteTable);
+
+// Floor & kitchen staff accounts
+router.get("/staff", getStaff);
+router.post("/staff", addStaff);
+router.put("/staff/:id", updateStaff);
+router.delete("/staff/:id", removeStaff);
 
 // Petpooja POS
 router.get("/petpooja/status", getPetpoojaStatus);

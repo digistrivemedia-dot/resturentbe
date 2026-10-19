@@ -213,7 +213,9 @@ const getCities = async (req, res, next) => {
             _id: { $ifNull: ["$r.address.city", "Unknown"] },
             gmv: { $sum: "$pricing.total" },
             orders: { $sum: 1 },
-            customers: { $addToSet: "$customer" },
+            // $addToSet keeps one null entry for all walk-in dine-in orders,
+            // inflating a city's unique-customer count by exactly 1 — strip it.
+            customers: { $addToSet: { $ifNull: ["$customer", "$$REMOVE"] } },
           },
         },
       ]),
@@ -307,7 +309,9 @@ const getCustomersAnalytics = async (req, res, next) => {
 
     const [perCustomer, membershipAgg, retentionAllTime, membershipRevenueAgg] = await Promise.all([
       Order.aggregate([
-        { $match: match },
+        // Walk-in dine-in orders have no customer — excluded so they don't
+        // collapse into a single null pseudo-customer.
+        { $match: { ...match, customer: { $ne: null } } },
         { $group: { _id: "$customer", orders: { $sum: 1 } } },
         {
           $lookup: {
@@ -338,7 +342,7 @@ const getCustomersAnalytics = async (req, res, next) => {
       ]),
       // All-time repeat rate isn't affected by the date filter — a stabler retention signal
       Order.aggregate([
-        { $match: { status: { $ne: ORDER_STATUS.CANCELLED } } },
+        { $match: { status: { $ne: ORDER_STATUS.CANCELLED }, customer: { $ne: null } } },
         { $group: { _id: "$customer", orders: { $sum: 1 } } },
         { $group: { _id: null, total: { $sum: 1 }, repeat: { $sum: { $cond: [{ $gt: ["$orders", 1] }, 1, 0] } } } },
       ]),

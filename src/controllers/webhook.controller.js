@@ -6,6 +6,8 @@ const User = require("../models/User");
 const Restaurant = require("../models/Restaurant");
 const PetpoojaMenuCache = require("../models/PetpoojaMenuCache");
 const MenuItem = require("../models/MenuItem");
+const Bill = require("../models/Bill");
+const { markBillOrdersPaid } = require("./pos.controller");
 const { ORDER_STATUS } = require("../utils/constants");
 const { getIo } = require("../socket");
 const notifyAdmin = require("../utils/notifyAdmin");
@@ -224,6 +226,44 @@ const handleRazorpayWebhook = async (req, res) => {
       }
       emitOrderUpdate(order.restaurant, order.customer, order);
       console.log(`[Razorpay Webhook] Order ${order.orderNumber} payment captured`);
+    }
+
+    // A guest scanned the QR on their dine-in bill and paid. This is the ONLY
+    // thing that settles a QR bill — the waiter has no "mark QR paid" button,
+    // so a bill can't be closed without the money actually arriving.
+    if (event === "qr_code.credited") {
+      const qrEntity = payload.qr_code?.entity;
+      const payment = payload.payment?.entity;
+      const bill = await Bill.findOne({ "razorpayQr.qrId": qrEntity?.id });
+      if (!bill) {
+        console.warn(`[Razorpay Webhook] No bill found for QR ${qrEntity?.id}`);
+        return;
+      }
+      if (bill.paymentStatus === "paid") return; // already settled (cash, or a duplicate webhook)
+
+      bill.paymentStatus = "paid";
+      bill.paymentMethod = "qr";
+      bill.paidAt = new Date();
+      bill.razorpayQr.paymentId = payment?.id;
+      bill.razorpayQr.amountPaid = payment?.amount ? payment.amount / 100 : undefined;
+      await bill.save();
+
+      await markBillOrdersPaid(bill);
+
+      try {
+        const io = getIo();
+        if (io) {
+          io.to(`restaurant:${bill.restaurant}`).emit("bill_paid", {
+            billId: bill._id,
+            tableId: bill.table,
+            tableNumber: bill.tableNumber,
+            method: "qr",
+          });
+        }
+      } catch (e) {}
+
+      console.log(`[Razorpay Webhook] Bill ${bill.billNumber} paid via QR`);
+      return;
     }
 
     if (event === "payment.failed") {

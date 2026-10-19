@@ -285,7 +285,9 @@ const getOrdersAnalytics = async (req, res, next) => {
       // New vs returning: for each customer with an order in-period, check if
       // they had any earlier (pre-period, non-cancelled) order with this restaurant.
       Order.aggregate([
-        { $match: allStatusMatch },
+        // Walk-in dine-in orders (no customer) can't be classified new vs
+        // returning — excluded so they don't land in one null pseudo-customer.
+        { $match: { ...allStatusMatch, customer: { $ne: null } } },
         { $group: { _id: "$customer" } },
         {
           $lookup: {
@@ -466,7 +468,8 @@ const getCustomersAnalytics = async (req, res, next) => {
 
     const [perCustomer, topCustomers, allTimeRepeat] = await Promise.all([
       Order.aggregate([
-        { $match: match },
+        // No customer = walk-in dine-in; excluded from per-customer stats.
+        { $match: { ...match, customer: { $ne: null } } },
         { $group: { _id: "$customer", orders: { $sum: 1 }, spend: { $sum: "$pricing.total" } } },
         {
           $lookup: {
@@ -493,7 +496,10 @@ const getCustomersAnalytics = async (req, res, next) => {
         { $addFields: { isReturning: { $gt: [{ $size: "$priorOrders" }, 0] } } },
       ]),
       Order.aggregate([
-        { $match: match },
+        // Dine-in POS orders have no customer — without this they all collapse
+        // into one null bucket that can outrank (and displace) a real customer
+        // in the top-10 before $unwind silently drops it.
+        { $match: { ...match, customer: { $ne: null } } },
         { $group: { _id: "$customer", orders: { $sum: 1 }, spend: { $sum: "$pricing.total" } } },
         { $sort: { spend: -1 } },
         { $limit: 10 },
@@ -504,7 +510,10 @@ const getCustomersAnalytics = async (req, res, next) => {
       // All-time repeat rate for this restaurant (not period-scoped) — a more
       // stable long-run retention signal than a single filtered window.
       Order.aggregate([
-        { $match: { restaurant: new mongoose.Types.ObjectId(restaurantId), status: { $ne: ORDER_STATUS.CANCELLED } } },
+        // customer: null excluded — every walk-in dine-in order would otherwise
+        // merge into a single pseudo-customer with a huge order count, counted
+        // as one "repeat customer" and skewing the repeat rate.
+        { $match: { restaurant: new mongoose.Types.ObjectId(restaurantId), status: { $ne: ORDER_STATUS.CANCELLED }, customer: { $ne: null } } },
         { $group: { _id: "$customer", orders: { $sum: 1 } } },
         { $group: { _id: null, totalCustomers: { $sum: 1 }, repeatCustomers: { $sum: { $cond: [{ $gt: ["$orders", 1] }, 1, 0] } } } },
       ]),

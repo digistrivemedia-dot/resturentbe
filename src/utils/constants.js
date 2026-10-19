@@ -1,3 +1,8 @@
+// Customer-facing brand name. Outlets are named internally per branch
+// ("SIC Varthur"), but a guest scanning a payment QR must see the name they
+// know the cafe by — mirrors APP_NAME in frontend/src/constants.
+const BRAND_NAME = "Sri Isha Cafe";
+
 const ORDER_STATUS = {
   PENDING_PAYMENT: "pending_payment",
   PLACED: "placed",
@@ -31,6 +36,7 @@ const COUPON_SCOPE = {
 };
 
 module.exports = {
+  BRAND_NAME,
   ORDER_STATUS,
   PAYMENT_STATUS,
   COUPON_TYPE,

@@ -9,6 +9,10 @@ const restaurantSchema = new mongoose.Schema(
       required: true,
     },
     managers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    // Waiter / kitchen accounts for the dine-in POS. Separate from managers:
+    // managers pass role("restaurant_owner") and get the full dashboard, staff
+    // only ever reach the /pos and /kitchen routes.
+    staff: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     name: {
       type: String,
       required: true,

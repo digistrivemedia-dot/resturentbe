@@ -39,9 +39,13 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
     avatar: String,
+    // "waiter" and "kitchen" are restaurant floor/kitchen staff — they log in
+    // on the POS tablet and the kitchen display respectively. They're linked to
+    // their restaurant via Restaurant.staff[], so the existing
+    // restaurantMiddleware resolves req.restaurant for them unchanged.
     role: {
       type: String,
-      enum: ["customer", "restaurant_owner", "super_admin"],
+      enum: ["customer", "restaurant_owner", "super_admin", "waiter", "kitchen"],
       default: "customer",
     },
     authProvider: {

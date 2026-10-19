@@ -7,16 +7,38 @@ const orderSchema = new mongoose.Schema(
       type: String,
       unique: true,
     },
+    // Optional: dine-in orders taken by staff on the POS tablet belong to a
+    // walk-in with no account. Every customer-facing flow (ratings, cancel
+    // requests, notifications) is gated on this being present.
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
       index: true,
     },
     restaurant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Restaurant",
       required: true,
+    },
+    // ── Dine-in POS fields (unset on delivery/pickup orders) ────────────────
+    table: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Table",
+      index: true,
+    },
+    // The waiter who took this order. The kitchen's "ready to serve" alert is
+    // routed to this one user, not broadcast — several waiters work the floor
+    // at once and each only wants their own tables' food called.
+    placedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    // Set once this order is pulled onto a bill. Unset (null) is what makes an
+    // order count as "running" for its table — see pos.controller.js.
+    bill: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Bill",
+      index: true,
     },
     items: [
       {
@@ -247,5 +269,8 @@ orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ restaurant: 1, status: 1 });
 orderSchema.index({ orderNumber: 1 });
 orderSchema.index({ status: 1, createdAt: -1 });
+// The POS table grid asks "which orders on this table aren't billed yet?" on
+// every refresh — this is the index that keeps that a point lookup.
+orderSchema.index({ restaurant: 1, table: 1, bill: 1 });
 
 module.exports = mongoose.model("Order", orderSchema);

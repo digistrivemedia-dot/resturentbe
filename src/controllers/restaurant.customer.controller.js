@@ -12,7 +12,8 @@ const getCustomers = async (req, res, next) => {
     const restaurantId = req.restaurant._id;
 
     const orderCounts = await Order.aggregate([
-      { $match: { restaurant: restaurantId } },
+      // Walk-in dine-in orders have no customer account to list here.
+      { $match: { restaurant: restaurantId, customer: { $ne: null } } },
       { $group: { _id: "$customer", totalOrders: { $sum: 1 }, lastOrderAt: { $max: "$createdAt" } } },
     ]);
 

@@ -272,13 +272,16 @@ const cancelOrderByRestaurant = async (req, res, next) => {
 
     await order.save();
 
-    await Notification.create({
-      user: order.customer._id,
-      title: "Order Cancelled",
-      message: `Your order #${order.orderNumber} was cancelled by the restaurant.`,
-      type: "order",
-      data: { orderId: order._id },
-    });
+    // Dine-in POS orders have no customer account to notify (walk-in guest).
+    if (order.customer) {
+      await Notification.create({
+        user: order.customer._id,
+        title: "Order Cancelled",
+        message: `Your order #${order.orderNumber} was cancelled by the restaurant.`,
+        type: "order",
+        data: { orderId: order._id },
+      });
+    }
 
     emitOrderUpdate(req.restaurant._id, order);
     return ApiResponse.send(res, 200, "Order cancelled", { order });
@@ -311,13 +314,18 @@ const denyCancelRequest = async (req, res, next) => {
     order.cancellationRequest.respondedAt = new Date();
     await order.save();
 
-    await Notification.create({
-      user: order.customer._id,
-      title: "Cancellation Request Declined",
-      message: `The restaurant declined to cancel order #${order.orderNumber}: ${reason.trim()}`,
-      type: "order",
-      data: { orderId: order._id },
-    });
+    // Only a customer can raise a cancellation request, so there's always one
+    // here in practice — guarded to match cancelOrderByRestaurant rather than
+    // relying on that staying true.
+    if (order.customer) {
+      await Notification.create({
+        user: order.customer._id,
+        title: "Cancellation Request Declined",
+        message: `The restaurant declined to cancel order #${order.orderNumber}: ${reason.trim()}`,
+        type: "order",
+        data: { orderId: order._id },
+      });
+    }
 
     emitOrderUpdate(req.restaurant._id, order);
     return ApiResponse.send(res, 200, "Cancellation request declined", { order });
